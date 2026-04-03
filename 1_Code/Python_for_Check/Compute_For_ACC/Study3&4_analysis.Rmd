@@ -1,0 +1,1201 @@
+# =============================================================================
+# Study 3 & 4 整合分析 - 完整代码 (匹配原始可视化风格)
+# =============================================================================
+# 功能：合并 Study 3 和 Study 4 的实证数据，进行描述性统计、可视化和 DDM 参数分析
+# 作者：Research Team
+# 日期：自动生成
+
+---
+title: "Study 3 & 4 整合分析"
+author: "Research Team"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# =============================================================================
+# 1. 环境设置：加载必要的 R 包
+# =============================================================================
+if (!requireNamespace('pacman', quietly = TRUE)) {
+    install.packages('pacman')
+}
+
+pacman::p_load(
+  here, tidyverse, bruceR, boot,
+  ggplot2, ggdist, ggridges, patchwork,
+  papaja, cowplot, gridExtra,
+  metafor, e1071, nortest,
+  RColorBrewer
+)
+
+# 关闭科学计数法显示（避免大数字显示为科学计数法）
+options(scipen = 999)
+# 隐藏警告信息
+options(warn = -1)
+
+# =============================================================================
+# 2. 颜色配置：定义实证数据和模拟数据的颜色方案
+#    - empirical: 红色 (#a72126) - 原始研究中的实线颜色
+#    - simulated: 深蓝色 (#12264f) - 原始研究中的虚线颜色
+# =============================================================================
+COLORS <- c("empirical" = "#a72126", "simulated" = "#12264f")
+```
+
+---
+
+# 第一部分：数据预处理
+
+## 1.1 定义实验组信息
+```{r}
+# =============================================================================
+# 实验组映射表：定义 8 个实验组的参数和来源
+# ---------------------------------------------------------------------
+# 组别说明：
+#   - 组 1-6: 来自 Study 3
+#   - 组 7-8: 来自 Study 4 (原始 groupID 8→7, 9→8)
+# 参数说明：
+#   - P: 练习次数 (practice)
+#   - T: 目标呈现时间 (target duration, ms)
+#   - W: 窗口期 (window, ms)
+# =============================================================================
+GROUP_INFO <- tribble(
+  ~new_groupID, ~source, ~P, ~T, ~W, ~Condition,
+  1, "S3+S4", 0, 30, 300, "P=0,T=30,W=300",    # 无练习，短呈现，短窗口
+  2, "S3+S4", 0, 30, 600, "P=0,T=30,W=600",    # 无练习，短呈现，中窗口
+  3, "S3+S4", 120, 30, 600, "P=120,T=30,W=600", # 高练习，短呈现，中窗口
+  4, "S3+S4", 120, 80, 600, "P=120,T=80,W=600", # 高练习，中呈现，中窗口
+  5, "S3+S4", 8, 100, 1100, "P=8,T=100,W=1100", # 中练习，长呈现，长窗口
+  6, "S3+S4", 120, 500, 1500, "P=120,T=500,W=1500", # 高练习，超长呈现，超长窗口
+  7, "S4", 120, 30, 800, "P=120,T=30,W=800",    # Study 4 特有条件
+  8, "S4", 120, 80, 800, "P=120,T=80,W=800"     # Study 4 特有条件
+)
+
+# 条件显示顺序（用于图形中的 x 轴排序）
+CONDITION_ORDER <- c(
+  "P=0,T=30,W=300", "P=0,T=30,W=600", "P=120,T=30,W=600",
+  "P=120,T=80,W=600", "P=8,T=100,W=1100", "P=120,T=500,W=1500",
+  "P=120,T=30,W=800", "P=120,T=80,W=800"
+)
+
+# =============================================================================
+# 数据类型转换函数：确保所有列的数据类型正确
+# =============================================================================
+convert_data_type_emp <- function(df) {
+  df <- df %>% 
+    dplyr::mutate(
+      groupID = as.numeric(groupID),      # 组别 ID
+      subjectID = as.numeric(subjectID),  # 被试 ID
+      gender = as.numeric(gender),        # 性别
+      age = as.numeric(age),              # 年龄
+      handedness = as.numeric(handedness), # 利手
+      stage = as.character(stage),        # 实验阶段 (practice/formal)
+      trialID = as.numeric(trialID),     # 试次 ID
+      P = as.numeric(P),                  # 练习次数
+      T = as.numeric(T),                  # 目标呈现时间
+      W = as.numeric(W),                  # 窗口期
+      Shape = as.character(Shape),        # 形状
+      Label = as.character(Label),        # 标签 (self/friend/stranger)
+      CorrectKey = as.character(CorrectKey), # 正确键 (f/j)
+      Response = as.character(Response),  # 被试反应
+      RT = as.numeric(RT),               # 反应时 (秒)
+      Correct = as.numeric(Correct)      # 正确性 (0/1)
+    )
+  return(df)
+}
+```
+
+## 1.2 加载实证数据
+```{r}
+# =============================================================================
+# 读取实证数据文件
+# ---------------------------------------------------------------------
+# 数据来源：study3&4/data/raw/emp_data/
+# 文件命名格式：EXP_data_group{组别}_{被试编号}.csv
+# 筛选条件：排除 NoMask（无掩蔽）条件的数据
+# =============================================================================
+
+# 获取所有实验数据文件
+file_emp <- list.files(
+  here::here("3_Study3&4", "data", "raw", "emp_data"), 
+  pattern = "EXP.*\\.csv$", full.names = TRUE)
+
+# 排除 NoMask 文件（仅保留有掩蔽条件的实验数据）
+file_emp_main <- file_emp[!grepl("NoMask", file_emp)]
+
+# 循环读取并合并所有被试数据
+df_emp <- data.frame()
+for (i in seq_along(file_emp_main)) {
+  df <- read.csv(file_emp_main[i], header = TRUE) %>% convert_data_type_emp()
+  df_emp <- dplyr::bind_rows(df_emp, df)
+}
+
+# 输出数据摘要信息
+message(paste("实证数据总行数:", nrow(df_emp), "行"))
+message("各组被试数量:")
+print(table(df_emp$groupID))
+```
+
+## 1.3 数据筛选与处理
+```{r}
+# =============================================================================
+# 数据清洗和特征工程
+# ---------------------------------------------------------------------
+# 处理步骤：
+#   1. 筛选正式实验阶段数据 (stage == "formal")
+#   2. 根据被试ID分配匹配键 (MatchKey)：奇数分配 'f'，偶数分配 'j'
+#   3. 判断试次类型 (Matchness)：匹配 vs 不匹配
+#   4. 转换时间单位：秒 → 毫秒
+#   5. 添加实验条件标签 (Condition)
+# =============================================================================
+
+# 筛选正式实验数据并创建新变量
+df_emp <- df_emp %>%
+  filter(stage == "formal") %>%  # 仅保留正式实验阶段
+  mutate(
+    # 根据 subjectID 模4 余数分配正确的按键键位
+    MatchKey = case_when(
+      subjectID %% 4 == 1 ~ "f",  # 余数1 → f键
+      subjectID %% 4 == 2 ~ "j",  # 余数2 → j键
+      subjectID %% 4 == 3 ~ "j",  # 余数3 → j键
+      subjectID %% 4 == 0 ~ "f",  # 余数0 → f键
+      TRUE ~ NA_character_
+    ),
+    # 判断试次是否匹配（被试按键与目标键是否一致）
+    Matchness = ifelse(CorrectKey == MatchKey, "match", "mismatch"),
+    # 时间单位转换：秒 → 毫秒
+    T_ms = T * 1000,    # 目标呈现时间 (ms)
+    W_ms = W * 1000,    # 窗口期 (ms)
+    RT_ms = RT * 1000,  # 反应时 (ms)
+    # 判断被试是否按键（NaN 表示未按键）
+    Press = ifelse(!is.nan(RT), 1, 0)
+  )
+
+# 添加实验条件标签（将 groupID 映射到具体条件描述）
+df_emp <- df_emp %>%
+  left_join(GROUP_INFO %>% select(new_groupID, Condition), 
+            by = c("groupID" = "new_groupID"))
+
+# 筛选匹配试次（仅分析 self vs stranger 的匹配试次）
+df_emp_match <- df_emp %>% 
+  filter(Matchness == "match") %>%  # 仅保留匹配试次
+  mutate(Type = "empirical") %>%    # 标记数据类型
+  select(groupID, subjectID, Type, trialID, P, T_ms, W_ms, Label, Press, Correct, RT_ms, Condition)
+```
+
+## 1.4 加载模拟数据
+```{r}
+# =============================================================================
+# 读取 DDM 模拟数据
+# ---------------------------------------------------------------------
+# 数据来源：study3&4/data/raw/sim_data/
+# 文件命名格式：d{组别号}.csv
+# DDM 参数说明：
+#   - v: 漂移率 (drift rate) - 信息加工速度
+#   - a: 决策边界 (boundary) - 反应阈值
+# =============================================================================
+
+# 获取所有模拟数据文件（以 d 开头的 csv 文件）
+file_sim <- list.files(
+  here::here("3_Study3&4", "data", "raw", "sim_data"), 
+  pattern = "^d.*\\.csv$", full.names = TRUE)
+
+# 读取并合并所有模拟数据
+df_sim <- data.frame()
+for (i in seq_along(file_sim)) {
+  df <- read.csv(file_sim[i], header = TRUE)
+  df$groupID <- i  # 根据文件索引分配组别
+  df_sim <- dplyr::bind_rows(df_sim, df)
+}
+
+# 数据格式标准化：统一列名和数据类型
+df_sim <- df_sim %>%
+  mutate(
+    Type = "simulated",                    # 标记为模拟数据
+    RT_ms = RT * 1000,                    # 反应时转换为毫秒
+    T_ms = T,                              # 目标呈现时间 (ms)
+    W_ms = W,                              # 窗口期 (ms)
+    Press = response, Correct = response  # 兼容列名
+  ) %>%
+  select(groupID, subjectID, Type, trialID, P, T_ms, W_ms, Label, v, a, Press, Correct, RT_ms) %>%
+  left_join(GROUP_INFO %>% select(new_groupID, Condition), 
+            by = c("groupID" = "new_groupID"))
+```
+
+## 1.5 合并数据
+```{r}
+# =============================================================================
+# 合并实证数据与模拟数据
+# ---------------------------------------------------------------------
+# 合并后数据结构：
+#   - Type: "empirical" (实证) 或 "simulated" (模拟)
+#   - 统一的时间单位：毫秒
+#   - 添加唯一标识符 (uniqueID) 用于后续分析
+# =============================================================================
+
+# 合并两类数据
+df_combined <- dplyr::bind_rows(df_emp_match, df_sim) %>%
+  mutate(uniqueID = paste(Type, groupID, subjectID, sep = "_"))
+
+# 设置 Condition 的因子顺序（按实验设计顺序）
+df_combined$Condition <- factor(df_combined$Condition, levels = CONDITION_ORDER)
+
+<<<<<<< HEAD:study3&4/study3_4_complete.Rmd
+# 导出合并后的数据
+bruceR::export(df_combined, file = here::here("study3&4", "data", "processed", "combined_data.csv"))
+message("数据预处理完成!")
+=======
+bruceR::export(df_combined, file = here::here("3_Study3&4", "data", "processed", "combined_data.csv"))
+message("Data preprocessing complete!")
+>>>>>>> d3eaddca7afff7b5d7ed77e36c6c77be383f9bc0:3_Study3&4/Study3&4_analysis.Rmd
+```
+
+---
+
+# 第二部分：描述性统计分析
+
+## 2.1 组别水平汇总
+```{r}
+# =============================================================================
+# 计算各实验条件下的组别平均指标
+# ---------------------------------------------------------------------
+# 汇总变量：
+#   - n: 试次数量
+#   - mean_RT: 平均反应时 (ms)
+#   - sd_RT: 反应时标准差
+#   - mean_ACC: 平均正确率
+#   - sd_ACC: 正确率标准差
+#   - P, T, W: 实验参数
+# =============================================================================
+df_group <- df_combined %>%
+  group_by(groupID, Type, Label, Condition) %>%
+  summarise(
+    n = n(),
+    n_valid = sum(!is.na(RT_ms)),
+    mean_RT = mean(RT_ms, na.rm = TRUE),
+    sd_RT = sd(RT_ms, na.rm = TRUE),
+    mean_ACC = mean(Correct[!is.na(RT_ms)] == 1, na.rm = TRUE),
+    sd_ACC = sd(Correct[!is.na(RT_ms)] == 1, na.rm = TRUE),
+    P = mean(P), T = mean(T_ms), W = mean(W_ms),
+    .groups = "drop"
+  )
+```
+
+## 2.2 被试水平汇总
+```{r}
+# =============================================================================
+# 计算各被试在各条件下的平均指标
+# 用于后续的个体差异分析和效应量计算
+# =============================================================================
+df_individual <- df_combined %>%
+  group_by(groupID, subjectID, Type, Label, Condition) %>%
+  summarise(
+    n = n(),
+    n_valid = sum(!is.na(RT_ms)),
+    mean_RT = mean(RT_ms, na.rm = TRUE),
+    sd_RT = sd(RT_ms, na.rm = TRUE),
+    mean_ACC = mean(Correct[!is.na(RT_ms)] == 1, na.rm = TRUE),
+    sd_ACC = sd(Correct[!is.na(RT_ms)] == 1, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+## 2.3 Cohen's d 效应量计算
+```{r}
+# =============================================================================
+# 计算 Cohen's d 效应量（自我优先效应 SPE）
+# ---------------------------------------------------------------------
+# 效应量公式：(stranger - self) / pooled_sd
+#   - RT 的 d > 0：stranger 反应时更长 = 存在 SPE（自我优势）
+#   - ACC 的 d > 0：self 正确率更高 = 存在 SPE
+#
+# 数据格式转换：从长格式转换为宽格式（self/stranger 并列）
+# 筛选条件：排除 groupID == 7（NoMask 数据）
+# =============================================================================
+
+# 组别水平宽格式数据
+df_group_wide <- df_group %>%
+  pivot_wider(
+    id_cols = c(groupID, Type, Condition),  
+    names_from = Label,
+    values_from = c(mean_RT, sd_RT, mean_ACC, sd_ACC, n)
+  )
+
+# 计算组别水平的 Cohen's d
+df_group_wide <- df_group_wide %>%
+  mutate(
+    # RT 效应量：stranger 减 self（正值表示 stranger 反应更慢 = 自我优先）
+    cohen_d_RT = ifelse(!is.na(mean_RT_self) & !is.na(mean_RT_stranger),
+      (mean_RT_stranger - mean_RT_self) / sqrt(((n_stranger-1)*sd_RT_stranger^2 + (n_self-1)*sd_RT_self^2)/(n_self+n_stranger-2)), NA),
+    # ACC 效应量：self 减 stranger（正值表示 self 正确率更高）
+    cohen_d_ACC = ifelse(!is.na(mean_ACC_self) & !is.na(mean_ACC_stranger),
+      (mean_ACC_self - mean_ACC_stranger) / sqrt(((n_self-1)*sd_ACC_self^2 + (n_stranger-1)*sd_ACC_stranger^2)/(n_self+n_stranger-2)), NA)
+  )
+
+# 被试水平宽格式数据
+df_individual_wide <- df_individual %>%
+  pivot_wider(
+    id_cols = c(groupID, subjectID, Type, Condition),  
+    names_from = Label,
+    values_from = c(mean_RT, sd_RT, mean_ACC, sd_ACC, n)
+  )
+
+# 计算被试水平的 Cohen's d
+df_individual_wide <- df_individual_wide %>%
+  mutate(
+    cohen_d_RT = ifelse(!is.na(mean_RT_self) & !is.na(mean_RT_stranger),
+      (mean_RT_stranger - mean_RT_self) / sqrt(((n_stranger-1)*sd_RT_stranger^2 + (n_self-1)*sd_RT_self^2)/(n_self+n_stranger-2)), NA),
+    cohen_d_ACC = ifelse(!is.na(mean_ACC_self) & !is.na(mean_ACC_stranger),
+      (mean_ACC_self - mean_ACC_stranger) / sqrt(((n_self-1)*sd_ACC_self^2 + (n_stranger-1)*sd_ACC_stranger^2)/(n_self+n_stranger-2)), NA)
+  )
+
+# 筛选有掩蔽条件的数据（排除 NoMask，groupID = 7）
+df_group_mask <- df_group %>% filter(groupID != 7)
+df_group_wide_mask <- df_group_wide %>% filter(groupID != 7)
+df_individual_mask <- df_individual %>% filter(groupID != 7)
+df_individual_mask_wide <- df_individual_wide %>% filter(groupID != 7)
+
+<<<<<<< HEAD:study3&4/study3_4_complete.Rmd
+# 导出效应量数据
+bruceR::export(df_group_wide, file = here::here("study3&4", "data", "processed", "effect_size_group.csv"))
+message("描述性统计完成!")
+=======
+bruceR::export(df_group_wide, file = here::here("3_Study3&4", "data", "processed", "effect_size_group.csv"))
+message("Descriptive complete!")
+>>>>>>> d3eaddca7afff7b5d7ed77e36c6c77be383f9bc0:3_Study3&4/Study3&4_analysis.Rmd
+```
+
+---
+
+# 第三部分：反应时 (RT) 分析
+
+## 3.1 反应时可视化
+```{r}
+# =============================================================================
+# 反应时可视化（匹配原始 S3/S4 风格）
+# ---------------------------------------------------------------------
+# 图形元素：
+#   - 组别均值：点图 (geom_point, size=3.5)
+#   - 标准差：误差棒 (geom_errorbar, width=0.1)
+#   - 个体数据：抖动散点 (geom_jitter, size=2.5, alpha=0.3)
+#   - 分面：按实验条件 (facet_wrap)
+# 配色方案：
+#   - empirical: 红色 (#a72126)
+#   - simulated: 深蓝色 (#12264f)
+# 字体设置：
+#   - 轴标题：20pt 粗体
+#   - 轴刻度：19pt 粗体
+#   - 分面标签：18pt 粗体
+#   - 图例：21pt 粗体
+# =============================================================================
+
+# 定义统一的主题样式（确保所有图形风格一致）
+rt_theme <- theme(
+  axis.title.x = element_text(size = 20, face = "bold", color = "black"),
+  axis.title.y = element_text(size = 20, face = "bold", color = "black"),
+  axis.text.x = element_text(size = 19, face = "bold", color = "black"),
+  axis.text.y = element_text(size = 19, face = "bold", color = "black"),
+  strip.text = element_text(size = 18, face = "bold", color = "black"),
+  legend.title = element_text(size = 21, face = "bold", color = "black"),
+  legend.text = element_text(size = 20, face = "bold", color = "black")
+)
+
+# 基础图形：组别均值 + 误差棒
+b1 <- ggplot(df_group_mask, 
+             aes(x = Label, y = mean_RT, color = Type, shape = Type)) +
+  geom_point(size = 3.5, position = position_dodge(0.5)) +  # 组别均值点
+  geom_errorbar(aes(ymin = mean_RT - sd_RT, ymax = mean_RT + sd_RT),
+                width = 0.1, position = position_dodge(0.5)) +  # 标准差误差棒
+  labs(x = "Type", y = "Reaction Time") +
+  facet_wrap(~ Condition, nrow = 2) +  # 按条件分面（2行）
+  scale_y_continuous(breaks = seq(0, 1400, by = 200)) +  # Y轴刻度：每200ms
+  papaja::theme_apa() +
+  scale_color_manual(values = COLORS) +
+  rt_theme
+
+# 添加个体数据抖动点
+RT <- b1 +
+  geom_jitter(data = df_individual_mask, 
+              aes(x = Label, y = mean_RT, color = Type, shape = Type),
+              size = 2.5, alpha = 0.3, 
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.5)) +
+  labs(x = "Design", y = "RT")
+
+RT
+```
+
+## 3.2 反应时 Cohen's d 效应量
+```{r}
+# =============================================================================
+# Cohen's d RT 可视化（箱线图 + 抖动点）
+# ---------------------------------------------------------------------
+# 图形元素：
+#   - 箱线图：显示中位数和四分位距 (geom_boxplot)
+#   - 抖动点：显示个体数据分布 (geom_jitter)
+#   - 填充色：半透明显示 (alpha=0.2)
+# Y轴范围：-1 到 1.5，步长 0.2
+# =============================================================================
+
+cd_RT <- ggplot(df_individual_mask_wide, 
+                aes(x = Condition, y = cohen_d_RT, color = Type, shape = Type)) +
+  geom_boxplot(aes(fill = Type), alpha = 0.2, outlier.shape = NA) +  # 箱线图（去除离群点）
+  geom_jitter(size = 2.5, alpha = 0.5, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75)) +  # 个体抖动点
+  labs(x = "Design", y = "cohen's d RT") +
+  papaja::theme_apa() +
+  scale_color_manual(values = COLORS) +
+  scale_fill_manual(values = COLORS) +
+  scale_y_continuous(breaks = seq(-1, 1.5, by = 0.2)) +  # Y轴刻度
+  rt_theme
+
+cd_RT
+```
+
+## 3.3 保存图片
+```{r}
+<<<<<<< HEAD:study3&4/study3_4_complete.Rmd
+# 保存 RT 和 Cohen's d RT 图片
+ggsave(here::here("study3&4", "figures", "RT.png"), plot = RT, width = 11, height = 7, dpi = 300)
+ggsave(here::here("study3&4", "figures", "cd_RT.png"), plot = cd_RT, width = 16, height = 7, dpi = 300)
+=======
+ggsave(here::here("3_Study3&4", "figures", "RT.png"), plot = RT, width = 11, height = 7, dpi = 300)
+ggsave(here::here("3_Study3&4", "figures", "cd_RT.png"), plot = cd_RT, width = 14, height = 5, dpi = 300)
+>>>>>>> d3eaddca7afff7b5d7ed77e36c6c77be383f9bc0:3_Study3&4/Study3&4_analysis.Rmd
+```
+
+---
+
+# Part 4: ACC Analysis
+
+# 第四部分：正确率 (ACC) 分析
+
+## 4.1 正确率可视化
+```{r}
+# =============================================================================
+# 正确率可视化（与 RT 相同风格）
+# 图形结构与 RT 相同，仅变量替换为 mean_ACC
+# Y轴范围：0 到 1.2，步长 0.2
+# =============================================================================
+
+b2 <- ggplot(df_group_mask, 
+             aes(x = Label, y = mean_ACC, color = Type, shape = Type)) +
+  geom_point(size = 3.5, position = position_dodge(0.5)) +
+  geom_errorbar(aes(ymin = mean_ACC - sd_ACC, ymax = mean_ACC + sd_ACC),
+                width = 0.1, position = position_dodge(0.5)) +
+  labs(x = "Matchness", y = "ACC") +
+  facet_wrap(~ Condition, nrow = 2) +
+  scale_y_continuous(breaks = seq(0, 1.2, by = 0.2)) +  # Y轴刻度：0到1.2
+  papaja::theme_apa() +
+  scale_color_manual(values = COLORS) +
+  rt_theme
+
+ACC <- b2 +
+  geom_jitter(data = df_individual_mask, 
+              aes(x = Label, y = mean_ACC, color = Type, shape = Type),
+              size = 2.5, alpha = 0.3, 
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.5)) +
+  labs(x = "Design", y = "ACC")
+
+ACC
+```
+
+## 4.2 正确率 Cohen's d 效应量
+```{r}
+# =============================================================================
+# Cohen's d ACC 可视化（与 RT 相同风格）
+# Y轴范围：-1 到 1.5，步长 0.2
+# =============================================================================
+
+cd_ACC <- ggplot(df_individual_mask_wide, 
+                 aes(x = Condition, y = cohen_d_ACC, color = Type, shape = Type)) +
+  geom_boxplot(aes(fill = Type), alpha = 0.2, outlier.shape = NA) +
+  geom_jitter(size = 2.5, alpha = 0.5, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75)) +
+  labs(x = "Design", y = "cohen's d ACC") +
+  papaja::theme_apa() +
+  scale_color_manual(values = COLORS) +
+  scale_fill_manual(values = COLORS) +
+  scale_y_continuous(breaks = seq(-1, 1.5, by = 0.2)) +
+  rt_theme
+
+cd_ACC
+```
+
+## 4.3 组合图：RT + ACC
+```{r}
+# =============================================================================
+# 组合图：使用 patchwork 将 RT 和 ACC 垂直拼接
+# 图例收集到底部 (legend.position = "bottom")
+# 尺寸：12 x 11 inches
+# =============================================================================
+
+combined_plot1 <- RT / ACC +
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom")
+
+combined_plot1
+```
+
+## 4.4 组合图：Cohen's d RT + Cohen's d ACC
+```{r}
+# =============================================================================
+# 组合图：Cohen's d RT 和 Cohen's d ACC 垂直拼接
+# 尺寸：19 x 11 inches
+# =============================================================================
+
+combined_plot2 <- cd_RT / cd_ACC +
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom")
+
+combined_plot2
+```
+
+## 4.5 保存图片
+```{r}
+<<<<<<< HEAD:study3&4/study3_4_complete.Rmd
+ggsave(here::here("study3&4", "figures", "ACC.png"), plot = ACC, width = 11, height = 7, dpi = 300)
+ggsave(here::here("study3&4", "figures", "cd_ACC.png"), plot = cd_ACC, width = 16, height = 7, dpi = 300)
+ggsave(here::here("study3&4", "figures", "combined_plot1.png"), plot = combined_plot1, width = 12, height = 11, dpi = 300)
+ggsave(here::here("study3&4", "figures", "combined_plot2.png"), plot = combined_plot2, width = 19, height = 11, dpi = 300)
+=======
+ggsave(here::here("3_Study3&4", "figures", "ACC.png"), plot = ACC, width = 11, height = 7, dpi = 300)
+ggsave(here::here("3_Study3&4", "figures", "cd_ACC.png"), plot = cd_ACC, width = 14, height = 5, dpi = 300)
+ggsave(here::here("3_Study3&4", "figures", "combined_plot1.png"), plot = combined_plot1, width = 12, height = 11, dpi = 300)
+ggsave(here::here("3_Study3&4", "figures", "combined_plot2.png"), plot = combined_plot2, width = 19, height = 11, dpi = 300)
+>>>>>>> d3eaddca7afff7b5d7ed77e36c6c77be383f9bc0:3_Study3&4/Study3&4_analysis.Rmd
+```
+
+---
+
+# Part 5: DDM Parameter Analysis
+
+# 第五部分：DDM 参数分析
+
+## 5.1 加载 DDM 参数
+```{r}
+<<<<<<< HEAD:study3&4/study3_4_complete.Rmd
+# =============================================================================
+# 加载 Drift Diffusion Model (DDM) 估计参数
+# ---------------------------------------------------------------------
+# DDM 参数来源：
+#   - Study 3: 3_Study3/data/fast dm/estimates_0424.txt
+#   - Study 4: 4_Study4/data/fast dm/estimates_0424.txt
+#
+# 关键参数：
+#   - a: 决策边界 (threshold)
+#   - v_self: 自我条件的漂移率
+#   - v_stranger: 陌生人条件的漂移率
+#   - v_diff: 漂移率差异 (v_self - v_stranger) - SPE 指标
+#
+# 数据处理：
+#   - 从文件名提取 groupID 和 subjectID
+#   - S4 的 group 8/9 映射到新的 group 7/8
+# =============================================================================
+
+# 读取 Study 3 DDM 参数
+para_s3 <- read.table(here::here("3_Study3", "data", "fast dm", "estimates_0424.txt"),
+  header = TRUE, sep = ";", stringsAsFactors = FALSE) %>%
+  mutate(groupID = as.numeric(gsub("\\D", "", sub("participant_(\\d+)_\\d+", "\\1", dataset))),
+         subjectID = as.numeric(gsub("\\D", "", sub("participant_\\d+_(\\d+)", "\\1", dataset))))
+
+# 读取 Study 4 DDM 参数（需要重新映射 groupID）
+para_s4 <- read.table(here::here("4_Study4", "data", "fast dm", "estimates_0424.txt"),
+  header = TRUE, sep = ";", stringsAsFactors = FALSE) %>%
+  mutate(original_groupID = as.numeric(gsub("\\D", "", sub("participant_(\\d+)_\\d+", "\\1", dataset))),
+         subjectID = as.numeric(gsub("\\D", "", sub("participant_\\d+_(\\d+)", "\\1", dataset))),
+         # S4 group 8 → 新 group 7, S4 group 9 → 新 group 8
+         groupID = case_when(original_groupID == 8 ~ 7, original_groupID == 9 ~ 8, TRUE ~ original_groupID))
+
+# 合并并计算 v_diff
+para_emp <- dplyr::bind_rows(
+  para_s3 %>% select(groupID, subjectID, a, v_self, v_stranger),
+  para_s4 %>% select(groupID, subjectID, a, v_self, v_stranger)
+) %>% mutate(
+  v_diff = v_self - v_stranger,  # 计算漂移率差异（SPE指标）
+  Type = "empirical"
+) %>%
+=======
+# Load DDM parameters from processed data
+para_emp <- read.csv(here::here("3_Study3&4", "data", "processed", "ddm_params.csv")) %>%
+  mutate(Type = "empirical") %>%
+>>>>>>> d3eaddca7afff7b5d7ed77e36c6c77be383f9bc0:3_Study3&4/Study3&4_analysis.Rmd
+  left_join(GROUP_INFO %>% select(new_groupID, Condition), by = c("groupID" = "new_groupID"))
+```
+
+## 5.2 Bootstrap 置信区间估计
+```{r}
+# =============================================================================
+# 使用 Bootstrap 方法计算 v_diff 的 95% 置信区间
+# ---------------------------------------------------------------------
+# Bootstrap 过程：
+#   - 对每个实验组进行 5000 次重采样
+#   - 计算均值的百分位置信区间 (percentile method)
+# 同时计算模拟数据的 v_diff
+# =============================================================================
+
+set.seed(42)  # 设置随机种子以保证结果可重复
+v_bootstrap <- data.frame()
+for (g in unique(para_emp$groupID)) {
+  d <- para_emp %>% filter(groupID == g) %>% pull(v_diff)
+  b <- boot::boot(d, function(x, i) mean(x[i]), R = 5000)  # 5000 次重采样
+  ci <- boot::boot.ci(b, type = "perc")$perc  # 百分位置信区间
+  v_bootstrap <- bind_rows(v_bootstrap, data.frame(
+    groupID = g, mean_v_diff = mean(d), ci_lower = ci[4], ci_upper = ci[5]
+  ))
+}
+
+# 添加条件标签
+v_bootstrap <- v_bootstrap %>% left_join(GROUP_INFO %>% select(new_groupID, Condition), 
+                                         by = c("groupID" = "new_groupID"))
+
+# 计算模拟数据的 v_diff
+para_sim <- df_sim %>% group_by(groupID, Label) %>% summarise(v = mean(v), a = mean(a), .groups = "drop") %>%
+  pivot_wider(id_cols = groupID, names_from = Label, values_from = v) %>%
+  mutate(v_diff = self - stranger) %>% left_join(GROUP_INFO %>% select(new_groupID, Condition), 
+                                                  by = c("groupID" = "new_groupID"))
+```
+
+## 5.3 DDM 漂移率差异可视化 - Scar Plot 风格
+```{r}
+# =============================================================================
+# DDM 漂移率差异 (v_diff) Scar Plot - 匹配原始 S3/S4 风格
+# ---------------------------------------------------------------------
+# 图形元素：
+#   - 散点图 (geom_point)：实证数据的个体 v_diff
+#   - 抖动 (position_jitter)：让散点围绕模拟数据点分布
+#   - 三角形点 (shape=17)：模拟数据的均值
+# 配色：
+#   - 实证数据：#a3bbdb (浅蓝色)
+#   - 模拟数据：#d24735 (橙红色)
+# 尺寸：11 x 5 inches
+# =============================================================================
+
+# 定义条件标签映射
+group_labels <- setNames(GROUP_INFO$Condition, GROUP_INFO$new_groupID)
+
+# Scar Plot: 实证 vs 模拟数据的 v_diff
+diff_v <- ggplot(para_emp, aes(x = factor(groupID), y = v_diff)) +
+  # 实证数据散点（带抖动）
+  geom_point(position = position_jitter(width = 0.2, height = 0.3), 
+             color = "#a3bbdb", size = 2.5, alpha = 0.9) +  
+  # 模拟数据均值点（三角形）
+  geom_point(data = para_sim, aes(x = factor(groupID), y = v_diff), 
+             color = "#d24735", shape = 17, size = 4.5, alpha = 0.7) +
+  labs(x = "Condition", y = "v self - v stranger") +
+  scale_x_discrete(labels = group_labels) + 
+  papaja::theme_apa() +
+  theme(
+    axis.title.x = element_text(size = 20, face = "bold", color = "black"),
+    axis.title.y = element_text(size = 20, face = "bold", color = "black"),
+    axis.text.x = element_text(size = 19, face = "bold", color = "black"),
+    axis.text.y = element_text(size = 19, face = "bold", color = "black")
+  )
+
+diff_v
+```
+
+## 5.4 DDM 漂移率 (v) 可视化 - 分离 self/stranger
+```{r}
+# =============================================================================
+# DDM 漂移率 (v) 可视化 - 匹配原始 S3/S4 风格
+# ---------------------------------------------------------------------
+# 图形元素：
+#   - 散点图 + 连接线：显示 self 和 stranger 的 v 值
+#   - 三角形点：模拟数据的均值
+# 配色：与 Scar Plot 一致
+# =============================================================================
+
+# 数据格式转换为长格式
+para_emp_long <- para_emp %>%
+  pivot_longer(cols = c(v_self, v_stranger),
+               names_to = "Label",
+               values_to = "v") %>%
+  mutate(Label = ifelse(Label == "v_self", "self", "stranger"))
+
+# 模拟数据长格式
+para_sim_long <- para_sim %>%
+  pivot_longer(cols = c(self, stranger),
+               names_to = "Label",
+               values_to = "v") %>%
+  mutate(Label = ifelse(Label == "self", "self", "stranger"))
+
+# 设置随机种子以保证 jitter 可重复
+set.seed(123)
+para_emp_long <- para_emp_long %>%
+  mutate(x_jitter = as.numeric(factor(Label)) + runif(n(), -0.05, 0.05))
+
+# v 散点图：self vs stranger
+emp_v <- ggplot(para_emp_long, aes(x = factor(Label), y = v)) +
+  # 连接线（每个被试的 self 和 stranger 连接）
+  geom_line(aes(x = x_jitter, group = subjectID), color = "grey70", size = 0.8, alpha = 0.6) +  
+  # 实证数据点
+  geom_point(aes(x = x_jitter), color = "#a3bbdb", size = 2.5, alpha = 0.9) +
+  # 模拟数据点（三角形）
+  geom_point(data = para_sim_long, 
+             aes(x = factor(Label), y = v), 
+             inherit.aes = FALSE,
+             color = "#d24735", shape = 17, size = 4.5, alpha = 0.7) +
+  # 模拟数据连接线
+  geom_line(data = para_sim_long, 
+            aes(x = factor(Label), y = v, group = groupID), 
+            color = "#d24735", size = 1.2, alpha = 0.7) + 
+  labs(x = "Label", y = "v") +
+  scale_x_discrete(labels = c("self", "stranger")) + 
+  facet_wrap(~ groupID, labeller = as_labeller(group_labels), nrow = 2) + 
+  papaja::theme_apa() +
+  theme(
+    axis.title.x = element_text(size = 20, face = "bold", color = "black"),
+    axis.title.y = element_text(size = 20, face = "bold", color = "black"),
+    axis.text.x = element_text(size = 19, face = "bold", color = "black"),
+    axis.text.y = element_text(size = 19, face = "bold", color = "black"),
+    strip.text = element_text(size = 18, face = "bold", color = "black")
+  )
+
+emp_v
+```
+
+## 5.5 DDM 漂移率差异可视化 - Bootstrap 风格
+```{r}
+# =============================================================================
+# DDM 漂移率差异 (v_diff) Bootstrap 可视化 - 匹配原始 S3/S4 风格
+# ---------------------------------------------------------------------
+# 图形元素：
+#   - 半小提琴图 (stat_halfeye)：显示数据分布
+#   - 抖动散点 (geom_jitter)：显示原始数据点
+#   - 误差棒 (geom_crossbar)：显示 95% 置信区间
+#   - 三角形点 (shape=17)：模拟数据的均值
+#   - 虚线 (geom_hline)：零参考线 (y=0)
+# 配色方案：RColorBrewer RdBu 调色板 (8 色)
+# 字体设置：与前述图表一致
+# 尺寸：22 x 7 inches
+# =============================================================================
+
+group_labels <- setNames(GROUP_INFO$Condition, GROUP_INFO$new_groupID)
+colors <- RColorBrewer::brewer.pal(8, "RdBu")  # 使用红蓝色阶
+
+bootstrap_vdiff <- ggplot(para_emp, aes(x = factor(groupID), y = v_diff, fill = factor(groupID))) +
+  stat_halfeye(adjust = 1, justification = -0.3, .width = 0, point_alpha = 0, alpha = 0.7, scale = 0.6) +  # 半小提琴图
+  geom_jitter(aes(color = factor(groupID)), width = 0.1, alpha = 0.1, size = 1.5) +  # 原始数据抖动点
+  geom_crossbar(data = v_bootstrap, aes(y = mean_v_diff, ymin = ci_lower, ymax = ci_upper), 
+                width = 0.15, color = "black", alpha = 0.2) +  # 95% CI 误差棒
+  geom_point(data = para_sim, aes(x = factor(groupID), y = v_diff), color = "black", shape = 17, size = 4) +  # 模拟数据均值点
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +  # 零参考线
+  scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors) +
+  scale_x_discrete(labels = group_labels) +
+  scale_y_continuous(breaks = seq(-1, 6, by = 1)) +
+  labs(x = "Condition", y = "Bootstrap Means") +
+  papaja::theme_apa() +
+  theme(legend.position = "none") +
+  theme(
+    axis.title.x = element_text(size = 20, face = "bold", color = "black"),
+    axis.title.y = element_text(size = 20, face = "bold", color = "black"),
+    axis.text.x  = element_text(size = 20, face = "bold", color = "black"),
+    axis.text.y  = element_text(size = 21, face = "bold", color = "black"),
+    strip.text   = element_text(size = 20, face = "bold", color = "black"),
+    legend.title = element_text(size = 21, face = "bold", color = "black"),
+    legend.text  = element_text(size = 20, face = "bold", color = "black")
+  )
+
+bootstrap_vdiff
+```
+
+## 5.6 保存所有 DDM 可视化结果
+```{r}
+<<<<<<< HEAD:study3&4/study3_4_complete.Rmd
+# 保存所有 DDM 图表
+ggsave(here::here("study3&4", "figures", "fastdm_vdiff_vz.png"), plot = diff_v, width = 11, height = 5, dpi = 300)
+ggsave(here::here("study3&4", "figures", "fastdm_v_vz.png"), plot = emp_v, width = 9, height = 7, dpi = 300)
+ggsave(here::here("study3&4", "figures", "bootstrap_vdiff.png"), plot = bootstrap_vdiff, width = 22, height = 7, dpi = 300)
+
+# 导出 DDM 参数数据
+bruceR::export(para_emp, file = here::here("study3&4", "data", "processed", "ddm_params.csv"))
+bruceR::export(v_bootstrap, file = here::here("study3&4", "data", "processed", "ddm_bootstrap.csv"))
+=======
+ggsave(here::here("3_Study3&4", "figures", "bootstrap_vdiff.png"), plot = bootstrap_vdiff, width = 22, height = 7, dpi = 300)
+
+bruceR::export(para_emp, file = here::here("3_Study3&4", "data", "processed", "ddm_params.csv"))
+bruceR::export(v_bootstrap, file = here::here("3_Study3&4", "data", "processed", "ddm_bootstrap.csv"))
+```
+
+---
+
+# Part 6: Hierarchical Bootstrap Analysis
+
+## 6.1 Prepare Bootstrap Data
+```{r}
+# Filter empirical data for bootstrap (exclude group 7 nomask)
+emp_bootstrap <- df_emp_match %>%
+  filter(!is.na(RT_ms) & groupID != 7) %>% 
+  mutate(
+    uniqueID = paste(groupID, subjectID, Label, sep = "_"),
+    subjID = paste(groupID, subjectID, sep = "_")
+  )
+
+# Label colors for plots
+label_colors <- c("self" = "#a72126", "stranger" = "#12264f")
+```
+
+## 6.2 Bootstrap Functions
+```{r}
+# Bootstrap Cohen's d for RT
+bootstrap_cohens_d_rt <- function(data, R = 5000) {
+  self_data <- data$RT_ms[data$Label == "self"]
+  stranger_data <- data$RT_ms[data$Label == "stranger"]
+  
+  if (length(self_data) < 2 | length(stranger_data) < 2) {
+    return(list(t0 = NA, t = NA))
+  }
+  
+  boot_fun <- function(d, indices) {
+    d_sub <- d[indices, ]
+    s <- d_sub$RT_ms[d_sub$Label == "self"]
+    st <- d_sub$RT_ms[d_sub$Label == "stranger"]
+    if (length(s) < 2 | length(st) < 2) return(NA)
+    pooled_sd <- sqrt(((length(s) - 1) * sd(s)^2 + (length(st) - 1) * sd(st)^2) / (length(s) + length(st) - 2))
+    (mean(st) - mean(s)) / pooled_sd
+  }
+  
+  boot::boot(data, boot_fun, R = R)
+}
+
+# Bootstrap Cohen's d for ACC
+bootstrap_cohens_d_acc <- function(data, R = 5000) {
+  self_data <- data$Correct[data$Label == "self"]
+  stranger_data <- data$Correct[data$Label == "stranger"]
+  
+  if (length(self_data) < 2 | length(stranger_data) < 2) {
+    return(list(t0 = NA, t = NA))
+  }
+  
+  boot_fun <- function(d, indices) {
+    d_sub <- d[indices, ]
+    s <- d_sub$Correct[d_sub$Label == "self"]
+    st <- d_sub$Correct[d_sub$Label == "stranger"]
+    if (length(s) < 2 | length(st) < 2) return(NA)
+    pooled_sd <- sqrt(((length(s) - 1) * sd(s)^2 + (length(st) - 1) * sd(st)^2) / (length(s) + length(st) - 2))
+    (mean(s) - mean(st)) / pooled_sd
+  }
+  
+  boot::boot(data, boot_fun, R = R)
+}
+
+# Extract bootstrap results
+extract_bootstrap_results <- function(boot_obj, subj_id, prefix) {
+  ci <- tryCatch({
+    boot::boot.ci(boot_obj, type = "perc")$perc[4:5]
+  }, error = function(e) c(NA, NA))
+  
+  data.frame(
+    subjID = subj_id,
+    d_mean = boot_obj$t0,
+    d_lower = ci[1],
+    d_upper = ci[2],
+    stringsAsFactors = FALSE
+  )
+}
+```
+
+## 6.3 Run Bootstrap for Each Subject (RT)
+```{r}
+set.seed(522)
+
+emp_bootstrap_cd_RT <- lapply(split(emp_bootstrap, emp_bootstrap$subjID), function(subj_data) {
+  bootstrap_cohens_d_rt(as.data.frame(subj_data), R = 5000)
+})
+```
+
+## 6.4 Extract RT Bootstrap Results
+```{r}
+emp_bootstrap_cd_RT_df <- do.call(rbind, lapply(seq_along(emp_bootstrap_cd_RT), function(i) {
+  boot_obj <- emp_bootstrap_cd_RT[[i]]
+  subj_id <- names(emp_bootstrap_cd_RT)[i]
+  extract_bootstrap_results(boot_obj, subj_id, prefix = "mean_RT")
+}))
+
+# Split subjID into groupID and subjectID
+emp_bootstrap_cd_RT_df <- emp_bootstrap_cd_RT_df %>%
+  separate(subjID, into = c("groupID", "subjectID"), sep = "_", remove = FALSE) %>%
+  arrange(subjID)
+```
+
+## 6.5 Run Bootstrap for Each Subject (ACC)
+```{r}
+set.seed(522)
+
+emp_bootstrap_cd_ACC <- lapply(split(emp_bootstrap, emp_bootstrap$subjID), function(subj_data) {
+  bootstrap_cohens_d_acc(as.data.frame(subj_data), R = 5000)
+})
+```
+
+## 6.6 Extract ACC Bootstrap Results
+```{r}
+emp_bootstrap_cd_ACC_df <- do.call(rbind, lapply(seq_along(emp_bootstrap_cd_ACC), function(i) {
+  boot_obj <- emp_bootstrap_cd_ACC[[i]]
+  subj_id <- names(emp_bootstrap_cd_ACC)[i]
+  extract_bootstrap_results(boot_obj, subj_id, prefix = "mean_ACC")
+}))
+
+# Split subjID into groupID and subjectID
+emp_bootstrap_cd_ACC_df <- emp_bootstrap_cd_ACC_df %>%
+  separate(subjID, into = c("groupID", "subjectID"), sep = "_", remove = FALSE) %>%
+  arrange(subjID)
+```
+
+## 6.7 Group-Level Hierarchical Bootstrap CI (RT)
+```{r}
+group_ids <- unique(emp_bootstrap_cd_RT_df$groupID)
+
+group_bootstrap_RT <- lapply(group_ids, function(gid) {
+  group_data <- emp_bootstrap_cd_RT_df %>% filter(groupID == gid)
+  
+  # Filter out subjects with NA bootstrap values
+  valid_subjects <- group_data %>% filter(!is.na(d_mean))
+  
+  if (nrow(valid_subjects) == 0) {
+    return(data.frame(
+      groupID = gid,
+      group_d_mean = NA,
+      group_d_lower = NA,
+      group_d_upper = NA
+    ))
+  }
+  
+  subject_split <- split(valid_subjects$d_mean, valid_subjects$subjectID)
+  n_boot <- length(subject_split[[1]])
+  
+  group_boot_d <- replicate(n_boot, {
+    sampled_d <- sapply(subject_split, function(d_vec) sample(d_vec, 1))
+    mean(sampled_d, na.rm = TRUE)
+  })
+  
+  data.frame(
+    groupID = gid,
+    group_d_mean = mean(group_boot_d, na.rm = TRUE),
+    group_d_lower = quantile(group_boot_d, 0.025, na.rm = TRUE),
+    group_d_upper = quantile(group_boot_d, 0.975, na.rm = TRUE)
+  )
+})
+
+group_bootstrap_RT_df <- bind_rows(group_bootstrap_RT)
+```
+
+## 6.8 Group-Level Hierarchical Bootstrap CI (ACC)
+```{r}
+group_bootstrap_ACC <- lapply(group_ids, function(gid) {
+  group_data <- emp_bootstrap_cd_ACC_df %>% filter(groupID == gid)
+  
+  # Filter out subjects with NA bootstrap values
+  valid_subjects <- group_data %>% filter(!is.na(d_mean))
+  
+  if (nrow(valid_subjects) == 0) {
+    return(data.frame(
+      groupID = gid,
+      group_d_mean = NA,
+      group_d_lower = NA,
+      group_d_upper = NA
+    ))
+  }
+  
+  subject_split <- split(valid_subjects$d_mean, valid_subjects$subjectID)
+  n_boot <- length(subject_split[[1]])
+  
+  group_boot_d <- replicate(n_boot, {
+    sampled_d <- sapply(subject_split, function(d_vec) sample(d_vec, 1))
+    mean(sampled_d, na.rm = TRUE)
+  })
+  
+  data.frame(
+    groupID = gid,
+    group_d_mean = mean(group_boot_d, na.rm = TRUE),
+    group_d_lower = quantile(group_boot_d, 0.025, na.rm = TRUE),
+    group_d_upper = quantile(group_boot_d, 0.975, na.rm = TRUE)
+  )
+})
+
+group_bootstrap_ACC_df <- bind_rows(group_bootstrap_ACC)
+```
+
+## 6.9 Summary Bootstrap Statistics (RT)
+```{r}
+# Print summary statistics
+cat("=== RT Bootstrap Summary ===\n")
+print(head(emp_bootstrap_cd_RT_df))
+cat("\n=== Group-Level RT Bootstrap CI ===\n")
+print(group_bootstrap_RT_df)
+```
+
+## 6.10 Summary Bootstrap Statistics (ACC)
+```{r}
+cat("=== ACC Bootstrap Summary ===\n")
+print(head(emp_bootstrap_cd_ACC_df))
+cat("\n=== Group-Level ACC Bootstrap CI ===\n")
+print(group_bootstrap_ACC_df)
+```
+
+## 6.11 Save Bootstrap Results
+```{r}
+bruceR::export(emp_bootstrap_cd_RT_df, file = here::here("3_Study3&4", "data", "processed", "bootstrap_cd_RT.csv"))
+bruceR::export(emp_bootstrap_cd_ACC_df, file = here::here("3_Study3&4", "data", "processed", "bootstrap_cd_ACC.csv"))
+bruceR::export(group_bootstrap_RT_df, file = here::here("3_Study3&4", "data", "processed", "group_bootstrap_RT.csv"))
+bruceR::export(group_bootstrap_ACC_df, file = here::here("3_Study3&4", "data", "processed", "group_bootstrap_ACC.csv"))
+```
+
+---
+
+# Part 7: Ridge Plots
+
+## 7.1 Prepare Ridge Data
+```{r}
+# Prepare data for ridge plots
+df_emp_individual_wide <- df_individual_wide %>%
+  filter(Type == "empirical" & groupID != 7) %>%
+  unite(subjID, groupID, subjectID, sep = "_", remove = FALSE) %>%
+  select(subjID, groupID, subjectID, cohen_d_RT, cohen_d_ACC)
+
+df_emp_group_wide <- df_group_wide %>%
+  filter(Type == "empirical" & groupID != 7) %>%
+  select(groupID, cohen_d_RT, cohen_d_ACC)
+
+# Prepare RT bootstrap long format
+emp_bootstrap_RT_long <- emp_bootstrap_cd_RT_df %>%
+  select(subjID, groupID, subjectID) %>%
+  mutate(label = "RT") %>%
+  left_join(df_emp_match %>% 
+              filter(Type == "empirical") %>%
+              group_by(groupID, subjectID, Label) %>%
+              summarise(mean_RT = mean(RT_ms, na.rm = TRUE), .groups = "drop") %>%
+              mutate(subjID = paste(groupID, subjectID, sep = "_")),
+            by = "subjID")
+
+# Prepare ACC bootstrap long format  
+emp_bootstrap_ACC_long <- emp_bootstrap_cd_ACC_df %>%
+  select(subjID, groupID, subjectID) %>%
+  mutate(label = "ACC") %>%
+  left_join(df_emp_match %>%
+              filter(Type == "empirical") %>%
+              group_by(groupID, subjectID, Label) %>%
+              summarise(mean_ACC = mean(Correct, na.rm = TRUE), .groups = "drop") %>%
+              mutate(subjID = paste(groupID, subjectID, sep = "_")),
+            by = "subjID")
+```
+
+## 7.2 Ridge Plot: Cohen's d RT
+```{r}
+# Filter valid data for ridge plot
+ridge_data_RT <- emp_bootstrap_cd_RT_df %>% 
+  filter(!is.na(d_mean)) %>%
+  mutate(groupID = as.factor(groupID))
+
+ridge_group_RT <- group_bootstrap_RT_df %>%
+  filter(!is.na(group_d_mean)) %>%
+  mutate(groupID = as.factor(groupID))
+
+Ridge_cd_RT <- ggplot() +
+  geom_density_ridges(
+    data = ridge_data_RT, 
+    aes(x = d_mean, y = groupID),
+    scale = 0.8,
+    fill = "#594c57",
+    alpha = 0.6,
+    color = NA,
+    bandwidth = 0.1
+  ) +
+  geom_segment(
+    data = ridge_group_RT,
+    aes(x = group_d_lower, xend = group_d_upper, y = as.factor(groupID), yend = as.factor(groupID)),
+    color = "black",
+    size = 1.2
+  ) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 1) +
+  scale_x_continuous(
+    limits = c(-1, 2),
+    breaks = seq(-1.5, 2, by = 0.5)
+  ) +
+  labs(
+    x = "Cohen's d RT",
+    y = "Group"
+  ) +
+  papaja::theme_apa() +
+  rt_theme
+
+Ridge_cd_RT
+```
+
+## 7.3 Ridge Plot: Cohen's d ACC
+```{r}
+# Filter valid data for ridge plot
+ridge_data_ACC <- emp_bootstrap_cd_ACC_df %>% 
+  filter(!is.na(d_mean)) %>%
+  mutate(groupID = as.factor(groupID))
+
+ridge_group_ACC <- group_bootstrap_ACC_df %>%
+  filter(!is.na(group_d_mean)) %>%
+  mutate(groupID = as.factor(groupID))
+
+Ridge_cd_ACC <- ggplot() +
+  geom_density_ridges(
+    data = ridge_data_ACC, 
+    aes(x = d_mean, y = groupID),
+    scale = 0.8,
+    fill = "#594c57",
+    alpha = 0.6,
+    color = NA,
+    bandwidth = 0.1
+  ) +
+  geom_segment(
+    data = ridge_group_ACC,
+    aes(x = group_d_lower, xend = group_d_upper, y = as.factor(groupID), yend = as.factor(groupID)),
+    color = "black",
+    size = 1.2
+  ) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 1) +
+  scale_x_continuous(
+    limits = c(-1, 2),
+    breaks = seq(-1.5, 2, by = 0.5)
+  ) +
+  labs(
+    x = "Cohen's d ACC",
+    y = "Group"
+  ) +
+  papaja::theme_apa() +
+  rt_theme
+
+Ridge_cd_ACC
+```
+
+## 7.4 Combined Ridge Plot
+```{r}
+Ridge_cd_RT_clean <- Ridge_cd_RT +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+Ridge_cd_ACC_clean <- Ridge_cd_ACC +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+Combined_Ridge <- Ridge_cd_RT_clean + Ridge_cd_ACC_clean +
+  plot_layout(ncol = 2, guides = "collect") & 
+  theme(legend.position = "bottom")
+
+Combined_Ridge
+```
+
+## 7.5 Save Ridge Plots
+```{r}
+ggsave(here::here("3_Study3&4", "figures", "Ridge_cd_RT.png"), plot = Ridge_cd_RT, width = 14, height = 10, dpi = 300)
+ggsave(here::here("3_Study3&4", "figures", "Ridge_cd_ACC.png"), plot = Ridge_cd_ACC, width = 14, height = 10, dpi = 300)
+ggsave(here::here("3_Study3&4", "figures", "Ridge_combined.png"), plot = Combined_Ridge, width = 22, height = 10, dpi = 300)
+>>>>>>> d3eaddca7afff7b5d7ed77e36c6c77be383f9bc0:3_Study3&4/Study3&4_analysis.Rmd
+```
+
+---
+
+分析完成！
+
+---
+
+*`r Sys.Date()`*
