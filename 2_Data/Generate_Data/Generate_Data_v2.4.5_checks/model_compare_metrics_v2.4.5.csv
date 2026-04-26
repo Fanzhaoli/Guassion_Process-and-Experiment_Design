@@ -1,0 +1,3 @@
+﻿model,rmse_rt_median,rmse_acc,rmse_omit_rate,spearman_v_pure,spearman_v_gp,spearman_a_pure,spearman_a_gp
+pure_sigmoid,0.13800651276295672,0.14394505835014595,0.2190270470851607,,,,
+gp_sigmoid,0.30313298736102773,0.24730830330142875,0.33344347997822615,,,,

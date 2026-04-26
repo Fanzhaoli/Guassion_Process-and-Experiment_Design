@@ -1,0 +1,2 @@
+﻿n_fit,kernel_v,kernel_a
+5,"1.09**2 * RBF(length_scale=[3.84, 0.207, 4.79, 0.172]) + WhiteKernel(noise_level=0.0001)","1.02**2 * RBF(length_scale=[0.01, 0.263, 0.0247, 50]) + WhiteKernel(noise_level=1e-06)"
