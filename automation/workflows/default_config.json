@@ -1,0 +1,35 @@
+{
+  "name": "spe_experiment_iteration",
+  "description": "SPE实验设计自动化迭代 - Python直接启动配置",
+  "project_root": "E:/Github/Guassion_Process-and-Experiment_Design",
+  "profiles": {
+    "quick": {
+      "design": {"P_values": [0, 64, 120], "T_values": [30, 100, 500], "W_values": [300, 600, 1500], "lhs_points": 10},
+      "experiment": {"n_subjects": 8, "trials_per_condition": 8, "design_type": "mixed"},
+      "iteration": {"n_rounds": 2, "exploration_weight": 0.3, "use_real_data": true},
+      "model": {"w_gp": 0.5, "v_noise": 0.3, "a_noise": 0.25, "kernel_type": "rbf"},
+      "seed": 42
+    },
+    "standard": {
+      "design": {"P_values": [0, 4, 8, 16, 32, 64, 120, 150], "T_values": [10, 30, 50, 80, 100, 200, 350, 500], "W_values": [200, 300, 400, 600, 800, 1000, 1200, 1500], "lhs_points": 50},
+      "experiment": {"n_subjects": 30, "trials_per_condition": 20, "design_type": "mixed"},
+      "iteration": {"n_rounds": 5, "exploration_weight": 0.3, "use_real_data": true},
+      "model": {"w_gp": 0.5, "v_noise": 0.3, "a_noise": 0.25, "kernel_type": "rbf"},
+      "seed": 42
+    },
+    "research": {
+      "design": {"P_values": [0, 1, 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 120, 150], "T_values": [10, 20, 30, 50, 80, 100, 150, 200, 280, 350, 420, 500, 600], "W_values": [200, 300, 400, 500, 600, 800, 1000, 1200, 1500], "lhs_points": 100},
+      "experiment": {"n_subjects": 50, "trials_per_condition": 30, "design_type": "mixed"},
+      "iteration": {"n_rounds": 10, "exploration_weight": 0.3, "use_real_data": true},
+      "model": {"w_gp": 0.5, "v_noise": 0.25, "a_noise": 0.2, "kernel_type": "matern"},
+      "seed": 42
+    }
+  },
+  "default_profile": "standard",
+  "output": {
+    "log_dir": "automation/logs",
+    "output_dir": "automation/output",
+    "figure_dir": "3_Figures/automation_output",
+    "report_dir": "4_Reports"
+  }
+}
