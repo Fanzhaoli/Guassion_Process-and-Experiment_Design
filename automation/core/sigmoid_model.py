@@ -10,6 +10,7 @@ Sigmoid 调制函数模块
 """
 
 import numpy as np
+import pandas as pd
 from scipy.special import expit as sigmoid
 from typing import Dict, Tuple, List, Optional
 

@@ -7,7 +7,7 @@ echo   SPE 实验自动化环境 - 依赖自动安装程序
 echo ============================================================
 echo.
 
-set "PROJECT_ROOT=E:\Github\Guassion_Process-and-Experiment_Design"
+set "PROJECT_ROOT=%~dp0.."
 cd /d "%PROJECT_ROOT%"
 
 :: 1. 查找 Python

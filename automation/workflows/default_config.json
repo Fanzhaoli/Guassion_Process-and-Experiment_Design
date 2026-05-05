@@ -1,7 +1,7 @@
 {
   "name": "spe_experiment_iteration",
   "description": "SPE实验设计自动化迭代 - Python直接启动配置",
-  "project_root": "E:/Github/Guassion_Process-and-Experiment_Design",
+  "project_root": ".",
   "profiles": {
     "quick": {
       "design": {"P_values": [0, 64, 120], "T_values": [30, 100, 500], "W_values": [300, 600, 1500], "lhs_points": 10},

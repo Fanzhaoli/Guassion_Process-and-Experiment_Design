@@ -24,7 +24,7 @@ import time
 import json
 
 # 确保可以导入 core 模块
-_automation_dir = Path(__file__).resolve().parents[1]
+_automation_dir = Path(__file__).resolve().parent
 if str(_automation_dir) not in sys.path:
     sys.path.insert(0, str(_automation_dir))
 

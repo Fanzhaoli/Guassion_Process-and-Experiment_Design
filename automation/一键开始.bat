@@ -2,7 +2,7 @@
 chcp 65001 > nul
 title SPE 实验自动化 - 超简单一键开始
 
-set "PROJECT_ROOT=E:\Github\Guassion_Process-and-Experiment_Design"
+set "PROJECT_ROOT=%~dp0.."
 cd /d "%PROJECT_ROOT%"
 
 echo.

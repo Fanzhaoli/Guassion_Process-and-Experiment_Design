@@ -8,7 +8,7 @@ setlocal enabledelayedexpansion
 :: │  Gaussian Process + DDM Pipeline Launcher                │
 :: └──────────────────────────────────────────────────────────┘
 
-set "PROJECT_ROOT=E:\Github\Guassion_Process-and-Experiment_Design"
+set "PROJECT_ROOT=%~dp0.."
 
 cd /d "%PROJECT_ROOT%" 2>nul
 if errorlevel 1 (
