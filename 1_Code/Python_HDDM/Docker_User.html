@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DockerHDDM 命令生成器</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-hover: #79c0ff;
+    --green: #3fb950;
+    --green-bg: #04260f;
+    --red: #f85149;
+    --orange: #d2991d;
+    --radius: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #58a6ff, #3fb950);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p {
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .card-header .icon { font-size: 18px; }
+
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  input[type="text"], select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    transition: border-color 0.2s;
+  }
+  input[type="text"]:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+  }
+  input[type="text"]::placeholder {
+    color: #484f58;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .options-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  @media (max-width: 600px) {
+    .options-row { grid-template-columns: 1fr; }
+  }
+
+  .btn-generate {
+    display: block;
+    width: 100%;
+    padding: 12px 24px;
+    background: #238636;
+    color: #fff;
+    border: 1px solid rgba(240,246,252,0.1);
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: background 0.2s;
+  }
+  .btn-generate:hover { background: #2ea043; }
+
+  .output-section {
+    display: none;
+  }
+  .output-section.visible {
+    display: block;
+  }
+
+  .code-block {
+    position: relative;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-top: 12px;
+    overflow-x: auto;
+  }
+  .code-block pre {
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    font-size: 13px;
+    color: #7ee787;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .btn-copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 6px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-copy:hover { background: var(--border); }
+  .btn-copy.copied { background: #04260f; color: var(--green); border-color: var(--green); }
+
+  .explanation {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .explanation dt {
+    font-weight: 600;
+    color: var(--accent);
+    margin-top: 8px;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    font-size: 12px;
+  }
+  .explanation dd {
+    margin-left: 16px;
+    margin-bottom: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .tips {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: rgba(210,153,29,0.1);
+    border: 1px solid rgba(210,153,29,0.3);
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--orange);
+  }
+  .tips ul { margin: 8px 0 0 20px; }
+  .tips li { margin-bottom: 4px; }
+
+  .path-preview {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: rgba(88,166,255,0.08);
+    border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    color: var(--accent);
+    display: none;
+  }
+  .path-preview.visible { display: block; }
+  .path-preview .arrow { color: var(--text-muted); margin: 0 8px; }
+
+  footer {
+    text-align: center;
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>🐳 DockerHDDM 命令生成器</h1>
+    <p>输入你的数据文件夹路径，一键生成可运行的 Docker 命令</p>
+  </header>
+
+  <!-- Step 1: First-time setup -->
+  <div class="card" id="setupCard">
+    <div class="card-header"><span class="icon">📦</span> 首次使用：拉取镜像</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+      如果你的电脑还没有安装 DockerHDDM，请先在 <strong>CMD（管理员模式）</strong> 中运行：
+    </p>
+    <div class="code-block">
+      <button class="btn-copy" onclick="copyCode(this, 'docker pull hcp4715/hddm')">📋 复制</button>
+      <pre>docker pull hcp4715/hddm</pre>
+    </div>
+  </div>
+
+  <!-- Step 2: Path input -->
+  <div class="card">
+    <div class="card-header"><span class="icon">📁</span> 输入你的数据文件夹路径</div>
+
+    <label for="pathInput">Windows 文件夹路径（支持多种格式）</label>
+    <input type="text" id="pathInput"
+           placeholder="例如: D:\GitHub_programe\GitHub\Self-Repo\AI_Docker_User"
+           autocomplete="off" autofocus>
+
+    <div class="path-preview" id="pathPreview">
+      <span id="previewInput"></span>
+      <span class="arrow">→</span>
+      <span id="previewDocker"></span>
+    </div>
+
+    <div class="options-row">
+      <div>
+        <label for="cpus">CPU 核心数</label>
+        <select id="cpus">
+          <option value="2">2 核</option>
+          <option value="4" selected>4 核 (推荐)</option>
+          <option value="6">6 核</option>
+          <option value="8">8 核</option>
+          <option value="12">12 核</option>
+          <option value="16">16 核</option>
+        </select>
+      </div>
+      <div>
+        <label for="port">Jupyter 端口</label>
+        <input type="text" id="port" value="8888" placeholder="8888">
+      </div>
+      <div>
+        <label for="imageTag">镜像版本</label>
+        <select id="imageTag">
+          <option value="latest">latest (推荐)</option>
+          <option value="1.0.1">1.0.1 (最新稳定)</option>
+          <option value="1.0.1-amd64">1.0.1-amd64 (Intel)</option>
+          <option value="1.0.1-arm64">1.0.1-arm64 (Apple M1/M2)</option>
+          <option value="0.9.8RC">0.9.8RC</option>
+          <option value="0.9.8RC-amd64">0.9.8RC-amd64</option>
+          <option value="0.9.8RC-arm64">0.9.8RC-arm64</option>
+          <option value="0.8.0">0.8.0</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="btn-generate" onclick="generateCommand()">⚡ 生成命令</button>
+  </div>
+
+  <!-- Output -->
+  <div class="output-section" id="outputSection">
+    <div class="card">
+      <div class="card-header"><span class="icon">🚀</span> 复制以下命令到 CMD（管理员模式）运行</div>
+      <div class="code-block">
+        <button class="btn-copy" id="btnCopyCmd" onclick="copyCode(this, document.getElementById('commandOutput').textContent)">📋 复制命令</button>
+        <pre id="commandOutput"></pre>
+      </div>
+      <dl class="explanation">
+        <dt>docker run</dt><dd>启动一个 Docker 容器</dd>
+        <dt>-it</dt><dd>保持交互模式，可以看到 Jupyter 的输出日志</dd>
+        <dt>--rm</dt><dd>容器退出后自动删除，不占用磁盘空间</dd>
+        <dt>--cpus=N</dt><dd>限制容器使用的 CPU 核心数</dd>
+        <dt>-v 本地路径:容器路径</dt><dd>将你的数据文件夹挂载到容器内</dd>
+        <dt>-p 8888:8888</dt><dd>将容器的 8888 端口映射到本机</dd>
+        <dt>hcp4715/hddm:tag</dt><dd>使用的 Docker 镜像及版本</dd>
+        <dt>jupyter notebook</dt><dd>启动 Jupyter Notebook</dd>
+      </dl>
+      <div class="tips">
+        <strong>💡 使用提示：</strong>
+        <ul>
+          <li>运行后，复制终端中显示的 <code>http://127.0.0.1:8888/?token=...</code> 到浏览器打开</li>
+          <li>在 Jupyter 中找到 <strong>work</strong> 文件夹，里面就是你挂载的数据</li>
+          <li>如果端口被占用，可以修改为 <strong>8787</strong>、<strong>8889</strong> 等其他端口</li>
+          <li>每次用完关闭终端窗口即可，容器会自动清理（--rm）</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>基于 <a href="https://hub.docker.com/r/hcp4715/hddm" target="_blank">hcp4715/hddm</a> Docker 镜像 |
+    <a href="https://doi.org/10.1177/25152459241298700" target="_blank">Pan et al. (2025)</a></p>
+  </footer>
+
+</div>
+
+<script>
+const pathInput = document.getElementById('pathInput');
+const pathPreview = document.getElementById('pathPreview');
+const previewInput = document.getElementById('previewInput');
+const previewDocker = document.getElementById('previewDocker');
+
+// Live preview as user types
+pathInput.addEventListener('input', function() {
+  const raw = this.value.trim();
+  if (!raw) {
+    pathPreview.classList.remove('visible');
+    return;
+  }
+  const dockerPath = convertToDockerPath(raw);
+  if (dockerPath) {
+    previewInput.textContent = raw;
+    previewDocker.textContent = dockerPath;
+    pathPreview.classList.add('visible');
+  } else {
+    pathPreview.classList.remove('visible');
+  }
+});
+
+/**
+ * Convert Windows path to Docker-compatible mount path.
+ * Rules (from official docs):
+ *   D:\folder\sub  →  /d/folder/sub
+ *   C:\Users\me    →  /c/Users/me
+ *   "D:\path"      →  /d/path
+ *   D:/path/sub    →  /d/path/sub
+ *   /d/path/sub    →  /d/path/sub  (already docker format)
+ */
+function convertToDockerPath(raw) {
+  if (!raw) return null;
+
+  // Strip surrounding quotes (single or double, Chinese or English)
+  let path = raw.replace(/^["'""'']|["'""'']$/g, '').trim();
+  if (!path) return null;
+
+  // Already in Docker/Linux format? (starts with /)
+  if (path.startsWith('/')) {
+    return ensureNoTrailingSlash(path);
+  }
+
+  // Match Windows drive letter: D:\, D:/, D:\, etc.
+  // Also handle: D:folder (no slash) - treat as root of drive
+  const winMatch = path.match(/^([a-zA-Z]):[\\\/]?(.*)$/);
+  if (winMatch) {
+    const drive = winMatch[1].toLowerCase();
+    const rest = winMatch[2].replace(/\\/g, '/').replace(/\/+/g, '/');
+    const dockerPath = '/' + drive + (rest ? '/' + rest : '');
+    return ensureNoTrailingSlash(dockerPath);
+  }
+
+  // UNC path or other - treat as relative, prepend with /
+  path = path.replace(/\\/g, '/').replace(/\/+/g, '/');
+  if (!path.startsWith('/')) path = '/' + path;
+  return ensureNoTrailingSlash(path);
+}
+
+function ensureNoTrailingSlash(p) {
+  return p.replace(/\/+$/, '') || '/';
+}
+
+function generateCommand() {
+  const raw = pathInput.value.trim();
+  if (!raw) { alert('请先输入文件夹路径！'); return; }
+
+  const dockerPath = convertToDockerPath(raw);
+  if (!dockerPath) { alert('无法识别路径格式，请检查输入。'); return; }
+
+  const cpus = document.getElementById('cpus').value;
+  const port = document.getElementById('port').value || '8888';
+  const imageTag = document.getElementById('imageTag').value;
+  const image = imageTag === 'latest' ? 'hcp4715/hddm' : 'hcp4715/hddm:' + imageTag;
+
+  const cmd = `docker run -it --rm --cpus=${cpus} -v ${dockerPath}:/home/jovyan/work -p ${port}:8888 ${image} jupyter notebook`;
+
+  document.getElementById('commandOutput').textContent = cmd;
+  document.getElementById('outputSection').classList.add('visible');
+  document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
+
+  // Reset copy button state
+  document.getElementById('btnCopyCmd').textContent = '📋 复制命令';
+  document.getElementById('btnCopyCmd').classList.remove('copied');
+}
+
+function copyCode(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✅ 已复制！';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 复制';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => {
+    // Fallback for older browsers
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = '✅ 已复制！';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 复制';
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+}
+
+// Trigger on Enter key
+pathInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') generateCommand();
+});
+</script>
+</body>
+</html>
