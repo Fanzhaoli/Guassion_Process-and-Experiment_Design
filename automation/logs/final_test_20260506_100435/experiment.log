@@ -1,0 +1,84 @@
+[2026-05-06T10:04:35.244399] [INFO] (0.0s) ============================================================
+[2026-05-06T10:04:35.254217] [INFO] (0.0s) 实验优化自动化流程启动
+[2026-05-06T10:04:35.254655] [INFO] (0.0s) 配置: {
+  "experiment_name": "final_test",
+  "design": {
+    "P_values": [
+      0,
+      64,
+      120
+    ],
+    "T_values": [
+      30,
+      100,
+      500
+    ],
+    "W_values": [
+      300,
+      600,
+      1500
+    ],
+    "lhs_points": 10
+  },
+  "experiment": {
+    "n_subjects": 8,
+    "trials_per_condition": 8,
+    "design_type": "mixed",
+    "block_size": 20
+  },
+  "model": {
+    "w_gp": 0.5,
+    "v_noise": 0.3,
+    "a_noise": 0.25,
+    "kernel_type": "rbf"
+  },
+  "iteration": {
+    "n_rounds": 2,
+    "exploration_weight": 0.3,
+    "use_real_data": true
+  },
+  "seed": 42
+}
+[2026-05-06T10:04:35.301406] [INFO] (0.1s) 初始化组件...
+[2026-05-06T10:04:35.302482] [INFO] (0.1s) 组件初始化完成
+[2026-05-06T10:04:35.302925] [INFO] (0.1s) 生成实验设计空间...
+[2026-05-06T10:04:35.307831] [INFO] (0.1s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\final_test_20260506_100435\design_grid.csv
+[2026-05-06T10:04:35.308781] [INFO] (0.1s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\final_test_20260506_100435\design_lhs.csv
+[2026-05-06T10:04:35.308989] [INFO] (0.1s) 设计空间生成完成: 27 个网格点, 10 个LHS点 (耗时 0.0s)
+[2026-05-06T10:04:35.309149] [INFO] (0.1s) 生成实验序列...
+[2026-05-06T10:04:35.560158] [INFO] (0.3s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\final_test_20260506_100435\experiment_sequence.csv
+[2026-05-06T10:04:35.560486] [INFO] (0.3s) 实验序列生成完成: 6912 试次, 8 被试 (耗时 0.3s)
+[2026-05-06T10:04:35.560654] [INFO] (0.3s) 加载真实实验数据...
+[2026-05-06T10:04:35.605777] [INFO] (0.4s) T/W 已从秒转换为毫秒
+[2026-05-06T10:04:35.607079] [INFO] (0.4s) 真实数据加载完成: 26616 行 (耗时 0.0s)
+[2026-05-06T10:04:35.607288] [INFO] (0.4s) 训练生成模型...
+[2026-05-06T10:04:35.612125] [ERROR] (0.4s) 异常: 'label'
+Traceback (most recent call last):
+  File "C:\Users\蔡振辛\AppData\Roaming\Python\Python314\site-packages\pandas\core\indexes\base.py", line 3812, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'label'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\pipeline.py", line 147, in run
+    self._stage_train_models(design_df, real_data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\pipeline.py", line 309, in _stage_train_models
+    self.generative_model.fit_to_real_data(real_data, design_df)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\core\generative_model.py", line 195, in fit_to_real_data
+    (real_data['W'] == W) & (real_data['label'] == label))
+                             ~~~~~~~~~^^^^^^^^^
+  File "C:\Users\蔡振辛\AppData\Roaming\Python\Python314\site-packages\pandas\core\frame.py", line 4113, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "C:\Users\蔡振辛\AppData\Roaming\Python\Python314\site-packages\pandas\core\indexes\base.py", line 3819, in get_loc
+    raise KeyError(key) from err
+KeyError: 'label'
+
+[2026-05-06T10:04:35.612750] [INFO] (0.4s) 实验完成. 耗时: 0.4s. 成功: False

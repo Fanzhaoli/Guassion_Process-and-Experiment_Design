@@ -1,0 +1,2 @@
+{"timestamp": "2026-05-06T10:07:30.512676", "elapsed_s": 0.012, "stage": "init", "data": {"status": "starting"}}
+{"timestamp": "2026-05-06T10:07:30.518129", "elapsed_s": 0.017, "stage": "design_generation", "data": {"n_grid_conditions": 1638, "n_lhs_points": 100, "summary": {"n_conditions": 1638, "P": {"min": 0, "max": 150, "unique": 14}, "T": {"min": 10, "max": 600, "unique": 13}, "W": {"min": 200, "max": 1500, "unique": 9}, "M": {"min": 210, "max": 2100, "unique": 77}}}}

@@ -164,6 +164,32 @@ class GenerativeModel:
             real_data: 真实实验数据 (含 P,T,W,label,RT,response)
             design_df: 设计空间定义 (如果为 None，从 real_data 推导)
         """
+        real_data = real_data.copy()
+
+        if 'label' not in real_data.columns:
+            if 'Label' in real_data.columns:
+                real_data['label'] = real_data['Label']
+            elif 'condition' in real_data.columns:
+                real_data['label'] = real_data['condition'].map({1: 'self', 0: 'stranger'})
+
+        if 'response' not in real_data.columns:
+            if 'Correct' in real_data.columns:
+                real_data['response'] = real_data['Correct']
+            elif 'correct' in real_data.columns:
+                real_data['response'] = real_data['correct']
+
+        if 'subject' not in real_data.columns and 'subjectID' in real_data.columns:
+            real_data['subject'] = real_data['subjectID']
+
+        GROUP_PTW_MAP = {
+            1: (0, 30, 300), 2: (0, 30, 600), 3: (120, 30, 600),
+            4: (120, 80, 600), 5: (8, 100, 1100), 6: (120, 500, 1500),
+        }
+        if 'P' not in real_data.columns and 'groupID' in real_data.columns:
+            real_data['P'] = real_data['groupID'].map(lambda g: GROUP_PTW_MAP.get(g, (np.nan, np.nan, np.nan))[0])
+            real_data['T'] = real_data['groupID'].map(lambda g: GROUP_PTW_MAP.get(g, (np.nan, np.nan, np.nan))[1])
+            real_data['W'] = real_data['groupID'].map(lambda g: GROUP_PTW_MAP.get(g, (np.nan, np.nan, np.nan))[2])
+
         # 估计真实数据的条件水平 DDM 参数
         if design_df is None:
             unique_conds = real_data[['P', 'T', 'W', 'label']].drop_duplicates()
@@ -363,6 +389,37 @@ class ModelComparison:
             包含 RMSE 比较的 DataFrame
         """
         results = []
+        real_data = real_data.copy()
+
+        if 'label' not in real_data.columns:
+            if 'Label' in real_data.columns:
+                real_data['label'] = real_data['Label']
+            elif 'condition' in real_data.columns:
+                real_data['label'] = real_data['condition'].map({1: 'self', 0: 'stranger'})
+
+        if 'response' not in real_data.columns:
+            if 'Correct' in real_data.columns:
+                real_data['response'] = real_data['Correct']
+            elif 'correct' in real_data.columns:
+                real_data['response'] = real_data['correct']
+
+        GROUP_PTW_MAP = {
+            1: (0, 30, 300),
+            2: (0, 30, 600),
+            3: (120, 30, 600),
+            4: (120, 80, 600),
+            5: (8, 100, 1100),
+            6: (120, 500, 1500),
+        }
+
+        if 'subject' not in real_data.columns and 'subjectID' in real_data.columns:
+            real_data['subject'] = real_data['subjectID']
+
+        # 如果 real_data 没有 P/T/W 列但有 groupID，则添加
+        if 'P' not in real_data.columns and 'groupID' in real_data.columns:
+            real_data['P'] = real_data['groupID'].map(lambda g: GROUP_PTW_MAP.get(g, (np.nan, np.nan, np.nan))[0])
+            real_data['T'] = real_data['groupID'].map(lambda g: GROUP_PTW_MAP.get(g, (np.nan, np.nan, np.nan))[1])
+            real_data['W'] = real_data['groupID'].map(lambda g: GROUP_PTW_MAP.get(g, (np.nan, np.nan, np.nan))[2])
 
         for _, cond in design_df.iterrows():
             P, T, W = int(cond['P']), int(cond['T']), int(cond['W'])

@@ -1,0 +1,69 @@
+[2026-05-06T10:05:11.899726] [INFO] (0.0s) ============================================================
+[2026-05-06T10:05:11.900053] [INFO] (0.0s) 实验优化自动化流程启动
+[2026-05-06T10:05:11.900287] [INFO] (0.0s) 配置: {
+  "experiment_name": "final_test",
+  "design": {
+    "P_values": [
+      0,
+      64,
+      120
+    ],
+    "T_values": [
+      30,
+      100,
+      500
+    ],
+    "W_values": [
+      300,
+      600,
+      1500
+    ],
+    "lhs_points": 10
+  },
+  "experiment": {
+    "n_subjects": 8,
+    "trials_per_condition": 8,
+    "design_type": "mixed",
+    "block_size": 20
+  },
+  "model": {
+    "w_gp": 0.5,
+    "v_noise": 0.3,
+    "a_noise": 0.25,
+    "kernel_type": "rbf"
+  },
+  "iteration": {
+    "n_rounds": 2,
+    "exploration_weight": 0.3,
+    "use_real_data": true
+  },
+  "seed": 42
+}
+[2026-05-06T10:05:12.037462] [INFO] (0.1s) 初始化组件...
+[2026-05-06T10:05:12.038099] [INFO] (0.1s) 组件初始化完成
+[2026-05-06T10:05:12.038352] [INFO] (0.1s) 生成实验设计空间...
+[2026-05-06T10:05:12.043116] [INFO] (0.1s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\final_test_20260506_100511\design_grid.csv
+[2026-05-06T10:05:12.044008] [INFO] (0.1s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\final_test_20260506_100511\design_lhs.csv
+[2026-05-06T10:05:12.044262] [INFO] (0.1s) 设计空间生成完成: 27 个网格点, 10 个LHS点 (耗时 0.0s)
+[2026-05-06T10:05:12.044451] [INFO] (0.1s) 生成实验序列...
+[2026-05-06T10:05:12.251649] [INFO] (0.4s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\final_test_20260506_100511\experiment_sequence.csv
+[2026-05-06T10:05:12.252031] [INFO] (0.4s) 实验序列生成完成: 6912 试次, 8 被试 (耗时 0.2s)
+[2026-05-06T10:05:12.252258] [INFO] (0.4s) 加载真实实验数据...
+[2026-05-06T10:05:12.295589] [INFO] (0.4s) T/W 已从秒转换为毫秒
+[2026-05-06T10:05:12.297293] [INFO] (0.4s) 真实数据加载完成: 26616 行 (耗时 0.0s)
+[2026-05-06T10:05:12.297523] [INFO] (0.4s) 训练生成模型...
+[2026-05-06T10:05:12.642429] [INFO] (0.7s) 模型已用真实数据进行训练
+[2026-05-06T10:05:12.643076] [INFO] (0.7s) 模型训练完成 (耗时 0.3s)
+[2026-05-06T10:05:12.643248] [INFO] (0.7s) 生成模拟行为数据...
+[2026-05-06T10:05:14.897053] [INFO] (3.0s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\final_test_20260506_100511\synthetic_behavior_data.csv
+[2026-05-06T10:05:14.897951] [INFO] (3.0s) 模拟数据生成完成: 3456 行 (耗时 2.3s)
+[2026-05-06T10:05:14.898143] [INFO] (3.0s) 效应量分析...
+[2026-05-06T10:05:15.278245] [INFO] (3.4s) 效应量分析完成 (耗时 0.4s)
+[2026-05-06T10:05:15.278819] [INFO] (3.4s) 迭代优化探索...
+[2026-05-06T10:05:15.538168] [INFO] (3.6s) 迭代优化完成 (耗时 0.3s)
+[2026-05-06T10:05:15.538517] [INFO] (3.6s) 模型比较...
+[2026-05-06T10:05:15.654311] [INFO] (3.8s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\final_test_20260506_100511\model_comparison.csv
+[2026-05-06T10:05:15.654843] [INFO] (3.8s) 模型比较完成 (耗时 0.1s)
+[2026-05-06T10:05:15.655022] [INFO] (3.8s) 生成最终报告...
+[2026-05-06T10:05:15.669044] [INFO] (3.8s) 报告生成完成 (耗时 0.0s)
+[2026-05-06T10:05:15.670514] [INFO] (3.8s) 实验完成. 耗时: 3.8s. 成功: True

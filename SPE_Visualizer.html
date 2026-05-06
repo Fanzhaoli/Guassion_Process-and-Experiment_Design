@@ -139,6 +139,89 @@ body {
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(52,152,219,0.4); } 50% { box-shadow: 0 0 0 8px rgba(52,152,219,0); } }
 .pulse { animation: pulse 1.5s ease-out; border-radius: var(--radius); }
 
+/* --- 标签页 --- */
+.tab-nav { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 0; }
+.tab-btn {
+  padding: 10px 20px; border: none; background: transparent; font-size: 0.88rem;
+  font-weight: 600; color: var(--text-muted); cursor: pointer; transition: var(--transition);
+  border-bottom: 3px solid transparent; margin-bottom: -2px;
+}
+.tab-btn:hover { color: var(--accent); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* --- 参数探索面板 --- */
+.explore-grid {
+  display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start;
+}
+@media (max-width: 900px) { .explore-grid { grid-template-columns: 1fr; } }
+.explore-controls { display: flex; flex-direction: column; gap: 10px; }
+.explore-controls .ctrl-group { }
+.explore-controls .ctrl-group label {
+  display: block; font-size: 0.78rem; font-weight: 600; color: var(--text); margin-bottom: 3px;
+}
+.explore-controls .ctrl-group select,
+.explore-controls .ctrl-group input {
+  width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.82rem;
+}
+.explore-controls .ctrl-group select:focus,
+.explore-controls .ctrl-group input:focus { border-color: var(--accent); outline: none; }
+
+.xvar-options { display: flex; gap: 4px; }
+.xvar-btn {
+  flex: 1; padding: 6px 0; border: 2px solid var(--border); background: #fff; border-radius: 6px;
+  font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: var(--transition); text-align: center;
+}
+.xvar-btn:hover { border-color: var(--accent); }
+.xvar-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.yvar-options { display: flex; flex-wrap: wrap; gap: 4px; }
+.yvar-chip {
+  padding: 4px 10px; border: 1.5px solid var(--border); border-radius: 14px; font-size: 0.72rem;
+  font-weight: 600; cursor: pointer; transition: var(--transition); background: #fff; white-space: nowrap;
+}
+.yvar-chip:hover { border-color: var(--accent); }
+.yvar-chip.active { background: #d6eaf8; border-color: var(--accent); color: var(--accent); }
+
+.model-compare-row { display: flex; gap: 8px; align-items: end; }
+.model-compare-row .ctrl-group { flex: 1; }
+.model-vs { font-weight: 800; font-size: 0.9rem; color: var(--text-muted); padding-bottom: 8px; }
+.btn-add-model { font-size: 0.75rem; padding: 4px 10px; }
+
+.fixed-params-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.fixed-params-row label { font-size: 0.7rem !important; color: var(--text-muted) !important; }
+
+.explore-chart-area { min-height: 420px; position: relative; }
+.explore-chart-area canvas { width: 100% !important; height: 100% !important; }
+.explore-legend { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.76rem; }
+
+/* 模型选择器 */
+.model-select { width: 100%; padding: 8px 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 0.85rem; background: #fff; cursor: pointer; transition: var(--transition); }
+.model-select:focus { border-color: var(--accent); outline: none; }
+.model-desc { font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
+
+/* 加载动画 */
+.spinner { display: none; width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+.spinner.active { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 后端结果面板 */
+.result-panel { margin-top: 12px; padding: 12px; background: #f8fdf5; border: 1px solid #d5f5e3; border-radius: 8px; display: none; }
+.result-panel.show { display: block; }
+.result-panel .stat-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.82rem; }
+.result-panel .stat-row .stat-label { color: var(--text-muted); }
+.result-panel .stat-row .stat-value { font-weight: 700; }
+.result-panel .spe-highlight { font-size: 1rem; font-weight: 800; }
+.result-panel .file-path { font-size: 0.72rem; color: var(--text-muted); word-break: break-all; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #d5f5e3; }
+
+/* 高级参数折叠 */
+.advanced-params { margin-top: 8px; }
+.advanced-params summary { cursor: pointer; font-size: 0.78rem; color: var(--accent); font-weight: 600; padding: 4px 0; }
+.advanced-params .adv-content { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.advanced-params .adv-item label { font-size: 0.75rem; color: var(--text-muted); display: block; }
+.advanced-params .adv-item input { width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; }
+
 .comparison-view { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 768px) { .comparison-view { grid-template-columns: 1fr; } }
 .compare-card {
@@ -169,6 +252,20 @@ footer { text-align: center; padding: 20px; color: var(--text-muted); font-size:
       <!-- 参数控制面板 -->
       <section class="card" aria-labelledby="param-title">
         <div class="card-title"><span class="icon">🎛️</span> <span id="param-title">实验参数控制</span></div>
+
+        <!-- 模型选择 -->
+        <div class="param-group">
+          <label>生成模型 <span class="val" id="val-model">Sigmoid+DDM</span></label>
+          <select class="model-select" id="select-model">
+            <option value="sigmoid_ddm">Sigmoid + DDM (基础版)</option>
+            <option value="gp_ddm_v24">GP + DDM v2.4 (稳定版)</option>
+            <option value="gp_ddm_v245" selected>GP + DDM v2.4.5 (最新版)</option>
+            <option value="gp_ddm_v25">GP + DDM v2.5 (实验组版)</option>
+          </select>
+          <div class="model-desc" id="model-desc">Sigmoid S2 + GP 混合 + NA/omission + Deadline DDM</div>
+        </div>
+
+        <!-- P/T/W 参数 -->
         <div class="param-group">
           <label>练习次数 P <span class="val" id="val-P">64</span></label>
           <input type="range" id="slider-P" min="0" max="150" value="64" step="1">
@@ -184,12 +281,48 @@ footer { text-align: center; padding: 20px; color: var(--text-muted); font-size:
           <input type="range" id="slider-W" min="200" max="1500" value="600" step="10">
           <div class="param-preset">300=迫选, 600-1500=自由反应</div>
         </div>
+
+        <!-- 高级参数 -->
+        <details class="advanced-params">
+          <summary>⚙️ 高级参数（被试数、噪声等）</summary>
+          <div class="adv-content">
+            <div class="adv-item"><label>被试数</label><input type="number" id="adv-subjects" value="20" min="1" max="500"></div>
+            <div class="adv-item"><label>每人试次</label><input type="number" id="adv-trials" value="60" min="4" max="500"></div>
+            <div class="adv-item"><label>随机种子</label><input type="number" id="adv-seed" value="42"></div>
+            <div class="adv-item"><label>GP权重 w</label><input type="number" id="adv-wgp" value="0.5" min="0" max="1" step="0.1"></div>
+            <div class="adv-item"><label>v噪声</label><input type="number" id="adv-vnoise" value="1.0" min="0.1" max="5" step="0.1"></div>
+            <div class="adv-item"><label>a噪声</label><input type="number" id="adv-anoise" value="0.5" min="0.1" max="5" step="0.1"></div>
+          </div>
+        </details>
+
         <div class="btn-row">
-          <button class="btn btn-primary" id="btn-run" title="使用当前参数运行模拟">▶ 运行模拟</button>
+          <button class="btn btn-primary" id="btn-run" title="调用Python后端运行模型">
+            <span class="spinner" id="spinner"></span> ▶ 运行模型生成数据
+          </button>
           <button class="btn btn-outline btn-sm" id="btn-reset" title="恢复默认参数">↺ 默认</button>
         </div>
         <div style="margin-top:4px;font-size:0.72rem;color:var(--text-muted);">
           当前: 组 <span id="current-group">—</span> | M = T+W = <span id="current-M">—</span> ms
+        </div>
+
+        <!-- 后端运行结果面板 -->
+        <div class="result-panel" id="result-panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong style="font-size:0.85rem;">📊 模型运行结果</strong>
+            <span style="font-size:0.7rem;color:var(--text-muted);" id="result-model-name"></span>
+          </div>
+          <div class="stat-row"><span class="stat-label">总试次数</span><span class="stat-value" id="res-trials">—</span></div>
+          <div class="stat-row"><span class="stat-label">有效试次 / 应答率</span><span class="stat-value" id="res-valid">—</span></div>
+          <div class="stat-row"><span class="stat-label">平均 RT</span><span class="stat-value" id="res-rt">—</span></div>
+          <div class="stat-row"><span class="stat-label">Self RT / Stranger RT</span><span class="stat-value" id="res-rt-cond">—</span></div>
+          <div class="stat-row"><span class="stat-label">正确率</span><span class="stat-value" id="res-acc">—</span></div>
+          <div class="stat-row"><span class="stat-label">SPE</span><span class="stat-value spe-highlight" id="res-spe">—</span></div>
+          <div class="stat-row"><span class="stat-label">Cohen's d</span><span class="stat-value" id="res-cohensd">—</span></div>
+          <div class="file-path" id="res-csv-path"></div>
+          <div class="btn-row" style="margin-top:8px;">
+            <button class="btn btn-success btn-sm" id="btn-download-csv" disabled>📥 下载 CSV</button>
+            <button class="btn btn-outline btn-sm" id="btn-save-result" disabled>💾 保存到历史</button>
+          </div>
         </div>
       </section>
 
@@ -212,22 +345,26 @@ footer { text-align: center; padding: 20px; color: var(--text-muted); font-size:
       <details class="card help-panel" aria-labelledby="help-title">
         <summary id="help-title">📖 使用说明与操作指南</summary>
         <div class="content">
-          <p><strong>背景：</strong>本工具模拟自我匹配任务（Self-Matching Task）中，实验设计参数 (P,T,W) 对自我优势效应（SPE）的调节。使用<strong>Sigmoid S2机制函数</strong>计算 DDM 漂移率 v 与决策边界 a。</p>
+          <p><strong>背景：</strong>本工具连接 Python 后端，模拟自我匹配任务（Self-Matching Task）中，实验设计参数 (P,T,W) 对自我优势效应（SPE）的调节。</p>
+          <p><strong>前置条件：</strong>启动 Python 后端服务器（否则仅显示本地 JS 预览）：</p>
+          <pre style="background:#f5f5f5;padding:8px;border-radius:4px;font-size:0.75rem;margin:6px 0;">cd 1_Code\npython Python_for_Generate\Backend\server.py</pre>
           <p><strong>操作步骤：</strong></p>
           <ul>
-            <li><strong>1. 调参：</strong>拖动滑块调整 P/T/W，或点击预设组按钮</li>
-            <li><strong>2. 运行：</strong>点击「运行模拟」查看 v、a、RT、SPE 的变化</li>
-            <li><strong>3. 保存：</strong>点击「保存结果」将当前配置存入历史</li>
-            <li><strong>4. 对比：</strong>在历史列表中勾选 1-2 条记录，查看对比图</li>
-            <li><strong>5. 导出：</strong>点击「导出 CSV」下载所有历史数据</li>
+            <li><strong>1. 选模型：</strong>在下拉框中选择生成模型（Sigmoid+DDM / GP+DDM v2.4 / v2.4.5 / v2.5）</li>
+            <li><strong>2. 调参：</strong>拖动滑块调整 P/T/W，点击预设组或展开高级参数</li>
+            <li><strong>3. 运行：</strong>点击「运行模型生成数据」，后端自动运行模型并保存 CSV 到 <code>2_Data/Generate_Data/</code></li>
+            <li><strong>4. 查看：</strong>结果面板显示 SPE、RT、正确率等统计摘要</li>
+            <li><strong>5. 下载：</strong>点击「下载 CSV」获取生成的数据文件</li>
+            <li><strong>6. 保存：</strong>点击「保存到历史」将结果存入本地历史供对比</li>
           </ul>
-          <p><strong>图表说明：</strong></p>
+          <p><strong>模型版本说明：</strong></p>
           <ul>
-            <li><strong>DDM 参数 (v, a)：</strong>Self vs Stranger 的漂移率与决策边界对比</li>
-            <li><strong>SPE 时间序列：</strong>沿 T 维度展示 Self−Stranger 的 RT 差异</li>
-            <li><strong>各条件 RT：</strong>Self+Stranger × Matching+NonMatching 四组 RT 预测</li>
+            <li><strong>Sigmoid+DDM：</strong>纯 S2 机制 + Euler DDM，最基础版本</li>
+            <li><strong>GP+DDM v2.4：</strong>S2 + GP 混合参数 + Euler DDM</li>
+            <li><strong>GP+DDM v2.4.5（推荐）：</strong>S2 + GP + NA/omission + Deadline DDM + 正a重采样</li>
+            <li><strong>GP+DDM v2.5：</strong>基于6组真实实验条件的 GP + DDM</li>
           </ul>
-          <p><strong>数据来源：</strong>基于项目 Sigmoid 模型 <code>compute_v_s2</code> / <code>compute_a_s2</code> / <code>v_P_Function</code> 的 JavaScript 实现。</p>
+          <p><strong>数据来源：</strong>Python 后端直接调用 <code>S2 gen_data_jh.ipynb</code>、<code>Generate_Data_v2.4_runner.py</code>、<code>Generate_Data_v2.4.5.ipynb</code>、<code>Generate_Data_v2.5_runner.py</code> 中提取的模型代码。</p>
         </div>
       </details>
     </aside>
@@ -235,35 +372,122 @@ footer { text-align: center; padding: 20px; color: var(--text-muted); font-size:
     <!-- ======== 右侧主区域 ======== -->
     <main class="panel-group">
 
-      <!-- 主可视化区域 -->
-      <section class="card fade-in" aria-labelledby="viz-title">
-        <div class="card-title"><span class="icon">📊</span> <span id="viz-title">主可视化</span></div>
-        <div class="legend">
-          <span class="legend-item"><span class="legend-dot" style="background:#e74c3c"></span> Self</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#3498db"></span> Stranger</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#2ecc71"></span> Matching</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#e67e22"></span> NonMatching</span>
-        </div>
-        <div class="charts-grid">
-          <div class="chart-wrapper"><canvas id="chart-spe"></canvas></div>
-          <div class="chart-wrapper"><canvas id="chart-rt-bars"></canvas></div>
-        </div>
-      </section>
+      <!-- 标签页导航 -->
+      <div class="tab-nav">
+        <button class="tab-btn active" data-tab="tab-overview">📊 SPE 总览</button>
+        <button class="tab-btn" data-tab="tab-explore">🔬 参数探索</button>
+      </div>
 
-      <!-- 对比视图 -->
-      <section class="card" aria-labelledby="compare-title">
-        <div class="card-title"><span class="icon">🔍</span> <span id="compare-title">结果对比</span> <span style="font-weight:400;font-size:0.78rem;color:var(--text-muted);">（从历史记录中勾选 1-2 条）</span></div>
-        <div class="comparison-view" id="comparison-area">
-          <div class="compare-card" id="compare-slot-0">📌 请在历史记录中勾选一条记录</div>
-          <div class="compare-card" id="compare-slot-1">📌 勾选第二条记录开始对比</div>
-        </div>
-        <div class="charts-grid" style="margin-top:12px;">
-          <div class="chart-wrapper" style="height:260px;"><canvas id="chart-compare-spe"></canvas></div>
-          <div class="chart-wrapper" style="height:260px;"><canvas id="chart-compare-params"></canvas></div>
-        </div>
-      </section>
+      <!-- Tab 1: SPE 总览 -->
+      <div class="tab-content active" id="tab-overview">
+        <section class="card fade-in" aria-labelledby="viz-title" style="margin-top:0;">
+          <div class="card-title"><span class="icon">�</span> <span id="viz-title">主可视化</span></div>
+          <div class="legend">
+            <span class="legend-item"><span class="legend-dot" style="background:#e74c3c"></span> Self</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#3498db"></span> Stranger</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#2ecc71"></span> SPE RT</span>
+          </div>
+          <div class="charts-grid">
+            <div class="chart-wrapper"><canvas id="chart-spe"></canvas></div>
+            <div class="chart-wrapper"><canvas id="chart-rt-bars"></canvas></div>
+          </div>
+        </section>
 
-      <!-- 历史记录区域 -->
+        <section class="card" aria-labelledby="compare-title">
+          <div class="card-title"><span class="icon">🔍</span> <span id="compare-title">结果对比</span> <span style="font-weight:400;font-size:0.78rem;color:var(--text-muted);">（从历史记录中勾选 1-2 条）</span></div>
+          <div class="comparison-view" id="comparison-area">
+            <div class="compare-card" id="compare-slot-0">📌 请在历史记录中勾选一条记录</div>
+            <div class="compare-card" id="compare-slot-1">📌 勾选第二条记录开始对比</div>
+          </div>
+          <div class="charts-grid" style="margin-top:12px;">
+            <div class="chart-wrapper" style="height:260px;"><canvas id="chart-compare-spe"></canvas></div>
+            <div class="chart-wrapper" style="height:260px;"><canvas id="chart-compare-params"></canvas></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Tab 2: 参数探索 -->
+      <div class="tab-content" id="tab-explore">
+        <section class="card" style="margin-top:0;">
+          <div class="card-title"><span class="icon">🔬</span> 参数探索 — DDM参数(v,a,t0,z) × SPE(RT/ACC) 沿设计维度(T/P/W)变化</div>
+          <div class="explore-grid">
+            <div class="explore-controls">
+              <div class="ctrl-group">
+                <label>X 轴（扫描维度）</label>
+                <div class="xvar-options" id="xvar-btns">
+                  <button class="xvar-btn" data-x="T">T (刺激呈现)</button>
+                  <button class="xvar-btn active" data-x="P">P (练习次数)</button>
+                  <button class="xvar-btn" data-x="W">W (反应窗口)</button>
+                </div>
+              </div>
+              <div class="ctrl-group">
+                <label>Y 轴（显示指标，可多选）</label>
+                <div class="yvar-options" id="yvar-chips">
+                  <span class="yvar-chip active" data-y="spe_rt">SPE RT (ms)</span>
+                  <span class="yvar-chip" data-y="spe_acc">SPE ACC</span>
+                  <span class="yvar-chip" data-y="v_self">v Self</span>
+                  <span class="yvar-chip" data-y="v_stranger">v Stranger</span>
+                  <span class="yvar-chip" data-y="a">a (边界)</span>
+                  <span class="yvar-chip" data-y="t0">t0 (非决策)</span>
+                  <span class="yvar-chip" data-y="z">z (起点)</span>
+                </div>
+              </div>
+
+              <div style="font-weight:700;font-size:0.82rem;color:var(--accent);margin-top:4px;">🔹 模型 1</div>
+              <div class="ctrl-group">
+                <select id="explore-model1">
+                  <option value="sigmoid_ddm">Sigmoid + DDM</option>
+                  <option value="gp_ddm_v24">GP + DDM v2.4</option>
+                  <option value="gp_ddm_v245" selected>GP + DDM v2.4.5</option>
+                  <option value="gp_ddm_v25">GP + DDM v2.5</option>
+                </select>
+              </div>
+              <div class="ctrl-group">
+                <div class="fixed-params-row">
+                  <div><label>P</label><input type="number" id="explore-fix-P1" value="64" min="0" max="150"></div>
+                  <div><label>T (ms)</label><input type="number" id="explore-fix-T1" value="200" min="10" max="600"></div>
+                  <div><label>W (ms)</label><input type="number" id="explore-fix-W1" value="600" min="200" max="1500"></div>
+                </div>
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                <span style="font-weight:700;font-size:0.82rem;color:var(--accent2);">🔸 模型 2（对比）</span>
+                <button class="btn btn-outline btn-sm btn-add-model" id="btn-toggle-model2">＋ 启用</button>
+              </div>
+              <div id="model2-panel" style="display:none;">
+                <div class="ctrl-group">
+                  <select id="explore-model2">
+                    <option value="sigmoid_ddm">Sigmoid + DDM</option>
+                    <option value="gp_ddm_v24">GP + DDM v2.4</option>
+                    <option value="gp_ddm_v245" selected>GP + DDM v2.4.5</option>
+                    <option value="gp_ddm_v25">GP + DDM v2.5</option>
+                  </select>
+                </div>
+                <div class="ctrl-group">
+                  <div class="fixed-params-row">
+                    <div><label>P</label><input type="number" id="explore-fix-P2" value="120" min="0" max="150"></div>
+                    <div><label>T (ms)</label><input type="number" id="explore-fix-T2" value="200" min="10" max="600"></div>
+                    <div><label>W (ms)</label><input type="number" id="explore-fix-W2" value="600" min="200" max="1500"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ctrl-group">
+                <label>GP 权重 w <span id="explore-wgp-val">0.5</span></label>
+                <input type="range" id="explore-wgp" min="0" max="1" value="0.5" step="0.05">
+              </div>
+              <button class="btn btn-primary" id="btn-explore-sweep" style="margin-top:6px;">🔍 生成参数曲线</button>
+              <div style="font-size:0.7rem;color:var(--text-muted);">按 Ctrl+Enter 快速运行</div>
+            </div>
+            <div class="explore-chart-area">
+              <canvas id="chart-explore"></canvas>
+            </div>
+          </div>
+          <div class="explore-legend" id="explore-legend"></div>
+        </section>
+      </div>
+
+      <!-- 历史记录区域 (两个 Tab 共用) -->
       <section class="card" aria-labelledby="history-title">
         <div class="card-title" style="justify-content:space-between;">
           <span><span class="icon">📋</span> <span id="history-title">历史运行记录</span> <span style="font-weight:400;font-size:0.78rem;color:var(--text-muted);" id="history-count">(0 条)</span></span>
@@ -273,7 +497,7 @@ footer { text-align: center; padding: 20px; color: var(--text-muted); font-size:
           </span>
         </div>
         <div class="history-list" id="history-list">
-          <div class="no-data">暂无运行记录。调整参数后点击「运行模拟」并「保存结果」。</div>
+          <div class="no-data">暂无运行记录。调整参数后点击「运行模型生成数据」并「保存到历史」。</div>
         </div>
       </section>
     </main>
@@ -331,13 +555,24 @@ function estimateAccuracy(v, a) {
 const STORAGE_KEY = 'spe_visualizer_history';
 const MAX_HISTORY = 50;
 const T_RANGE = [10, 600];
+const API_BASE = 'http://127.0.0.1:5100';
+
+const MODEL_DESCRIPTIONS = {
+  'sigmoid_ddm': '纯 Sigmoid S2 机制 + Euler DDM 仿真，最基础的版本（来自 S2 gen_data_jh.ipynb）',
+  'gp_ddm_v24': 'Sigmoid S2 + GP 混合 v/a 参数 + Euler DDM，稳定版本（来自 Generate_Data_v2.4_runner.py）',
+  'gp_ddm_v245': 'Sigmoid S2 + GP 混合 + NA/omission机制 + Deadline DDM + 正a重采样，最新版本（来自 Generate_Data_v2.4.5.ipynb）',
+  'gp_ddm_v25': '基于6组真实实验条件的 GP + DDM，支持 PTW 因子调控（来自 Generate_Data_v2.5_runner.py）',
+};
 
 const defaultParams = { P: 64, T: 200, W: 600 };
 
 let currentResult = null;
+let backendResult = null;
 let history = [];
 let selectedForCompare = new Set();
 let chartSPE = null, chartRTBars = null, chartCompareSPE = null, chartCompareParams = null;
+let chartExplore = null;
+let exploreModel2Enabled = false;
 
 // =============================================================================
 // 3. 模拟运行
@@ -595,13 +830,15 @@ function renderHistory() {
     const sel = selectedForCompare.has(r.id) ? ' selected' : '';
     const ts = new Date(r.timestamp);
     const timeStr = `${ts.getMonth()+1}/${ts.getDate()} ${ts.getHours().toString().padStart(2,'0')}:${ts.getMinutes().toString().padStart(2,'0')}`;
+    const srcTag = r.source === 'backend' ? ' 🖥️' : ' 💻';
+    const modelTag = r.modelName ? ` · ${r.modelName}` : '';
     return `
       <div class="history-item${sel}" data-id="${r.id}" onclick="toggleHistorySelect(${r.id}, event)">
         <div class="info">
-          <div class="name">G${r.groupMatch} · P=${r.P} T=${r.T}ms W=${r.W}ms</div>
+          <div class="name">${srcTag} G${r.groupMatch} · P=${r.P} T=${r.T}ms W=${r.W}ms${modelTag}</div>
           <div class="params">${timeStr} · M=${r.M}ms</div>
           <div class="spe" style="color:${r.SPE_rt < 0 ? '#27ae60' : '#e74c3c'}">
-            SPE RT: ${r.SPE_rt.toFixed(1)} ms · SPE v: ${r.SPE_v.toFixed(3)}
+            SPE RT: ${(r.SPE_rt ?? 0).toFixed(1)} ms · SPE v: ${(r.SPE_v ?? 0).toFixed(3)}
           </div>
         </div>
         <div class="actions" onclick="event.stopPropagation();">
@@ -656,8 +893,9 @@ function updateCompareSlots() {
 
   if (selected.length >= 1) {
     const r = selected[0];
+    const modelLabel = r.modelName ? ` [${r.modelName}]` : '';
     slot0.className = 'compare-card filled';
-    slot0.innerHTML = `<strong>对比 #1</strong> G${r.groupMatch} P=${r.P} T=${r.T}ms W=${r.W}ms<br><span style="color:${r.SPE_rt<0?'#27ae60':'#e74c3c'}">SPE: ${r.SPE_rt.toFixed(1)}ms</span>`;
+    slot0.innerHTML = `<strong>对比 #1</strong> G${r.groupMatch} P=${r.P} T=${r.T}ms W=${r.W}ms${modelLabel}<br><span style="color:${(r.SPE_rt??0)<0?'#27ae60':'#e74c3c'}">SPE: ${(r.SPE_rt??0).toFixed(1)}ms</span>`;
   } else {
     slot0.className = 'compare-card';
     slot0.innerHTML = '📌 请在历史记录中勾选一条记录';
@@ -665,8 +903,9 @@ function updateCompareSlots() {
 
   if (selected.length >= 2) {
     const r = selected[1];
+    const modelLabel = r.modelName ? ` [${r.modelName}]` : '';
     slot1.className = 'compare-card filled';
-    slot1.innerHTML = `<strong>对比 #2</strong> G${r.groupMatch} P=${r.P} T=${r.T}ms W=${r.W}ms<br><span style="color:${r.SPE_rt<0?'#27ae60':'#e74c3c'}">SPE: ${r.SPE_rt.toFixed(1)}ms</span>`;
+    slot1.innerHTML = `<strong>对比 #2</strong> G${r.groupMatch} P=${r.P} T=${r.T}ms W=${r.W}ms${modelLabel}<br><span style="color:${(r.SPE_rt??0)<0?'#27ae60':'#e74c3c'}">SPE: ${(r.SPE_rt??0).toFixed(1)}ms</span>`;
   } else {
     slot1.className = 'compare-card';
     slot1.innerHTML = '📌 勾选第二条记录开始对比';
@@ -679,14 +918,16 @@ function updateCompareSlots() {
 
 function exportCSV() {
   if (history.length === 0) { showToast('没有历史记录可导出', 'error'); return; }
-  const headers = ['id','timestamp','P','T','W','M','group','SPE_v','SPE_rt_ms','SPE_acc','v_self','a_self','rt_self','acc_self','v_stranger','a_stranger','rt_stranger','acc_stranger'];
+  const headers = ['id','timestamp','source','model','P','T','W','M','group','SPE_v','SPE_rt_ms','SPE_acc','v_self','a_self','rt_self','acc_self','v_stranger','a_stranger','rt_stranger','acc_stranger','csv_path'];
   const rows = history.map(r => [
-    r.id, r.timestamp, r.P, r.T, r.W, r.M, r.groupMatch,
-    r.SPE_v?.toFixed(4), r.SPE_rt?.toFixed(2), r.SPE_acc?.toFixed(4),
-    r.conditions?.self?.v?.toFixed(4), r.conditions?.self?.a?.toFixed(4),
-    r.conditions?.self?.rt?.toFixed(4), r.conditions?.self?.acc?.toFixed(4),
-    r.conditions?.stranger?.v?.toFixed(4), r.conditions?.stranger?.a?.toFixed(4),
-    r.conditions?.stranger?.rt?.toFixed(4), r.conditions?.stranger?.acc?.toFixed(4),
+    r.id, r.timestamp, r.source||'local', r.modelName||'',
+    r.P, r.T, r.W, r.M, r.groupMatch,
+    (r.SPE_v ?? '')?.toFixed?.(4) || r.SPE_v, (r.SPE_rt ?? '')?.toFixed?.(2) || r.SPE_rt, (r.SPE_acc ?? '')?.toFixed?.(4) || r.SPE_acc,
+    r.conditions?.self?.v?.toFixed?.(4) || '', r.conditions?.self?.a?.toFixed?.(4) || '',
+    r.conditions?.self?.rt?.toFixed?.(4) || '', r.conditions?.self?.acc?.toFixed?.(4) || '',
+    r.conditions?.stranger?.v?.toFixed?.(4) || '', r.conditions?.stranger?.a?.toFixed?.(4) || '',
+    r.conditions?.stranger?.rt?.toFixed?.(4) || '', r.conditions?.stranger?.acc?.toFixed?.(4) || '',
+    r.csv_path || '',
   ].join(','));
   const csv = [headers.join(','), ...rows].join('\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -716,24 +957,174 @@ function runAndShow() {
   const P = parseInt(document.getElementById('slider-P').value);
   const T = parseInt(document.getElementById('slider-T').value);
   const W = parseInt(document.getElementById('slider-W').value);
+  const model = document.getElementById('select-model').value;
 
+  // 先用 JS 本地计算更新图表（即时反馈）
   try {
     currentResult = runSimulation(P, T, W);
     updateCharts(currentResult);
-    document.getElementById('viz-title').textContent = '📊 主可视化 — 运行完成';
-    showToast('模拟完成！SPE RT: ' + currentResult.SPE_rt.toFixed(1) + ' ms', 'success');
   } catch (err) {
-    showToast('模拟出错: ' + err.message, 'error');
-    console.error(err);
+    console.error('Local simulation error:', err);
   }
+
+  // 调用后端 API
+  const btn = document.getElementById('btn-run');
+  const spinner = document.getElementById('spinner');
+  btn.disabled = true;
+  spinner.classList.add('active');
+  document.getElementById('viz-title').textContent = '📊 主可视化 — 模型运行中...';
+  showToast('正在调用 Python 后端生成数据...', 'info');
+
+  const params = {
+    n_subjects: parseInt(document.getElementById('adv-subjects').value) || 20,
+    trials_per_sub: parseInt(document.getElementById('adv-trials').value) || 60,
+    seed: parseInt(document.getElementById('adv-seed').value) || 42,
+    w_gp: parseFloat(document.getElementById('adv-wgp').value) || 0.5,
+    v_noise: parseFloat(document.getElementById('adv-vnoise').value) || 1.0,
+    a_noise: parseFloat(document.getElementById('adv-anoise').value) || 0.5,
+  };
+
+  fetch(`${API_BASE}/api/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, params }),
+  })
+  .then(res => res.json())
+  .then(data => {
+    btn.disabled = false;
+    spinner.classList.remove('active');
+    document.getElementById('viz-title').textContent = '📊 主可视化 — 运行完成';
+
+    if (data.error) {
+      showToast('后端错误: ' + data.error, 'error');
+      console.error('Backend error:', data.error);
+      return;
+    }
+
+    backendResult = data;
+    displayBackendResult(data);
+    showToast('✅ 模型运行完成！SPE: ' + (data.summary?.SPE_ms ?? '—') + ' ms | CSV已保存', 'success');
+  })
+  .catch(err => {
+    btn.disabled = false;
+    spinner.classList.remove('active');
+    document.getElementById('viz-title').textContent = '📊 主可视化 — 连接失败';
+    showToast('无法连接后端服务器，请确认已启动 server.py', 'error');
+    console.error('Fetch error:', err);
+  });
+}
+
+function displayBackendResult(data) {
+  const panel = document.getElementById('result-panel');
+  const s = data.summary || {};
+
+  document.getElementById('result-model-name').textContent = data.model_name || data.model;
+  document.getElementById('res-trials').textContent = s.total_trials ?? '—';
+  document.getElementById('res-valid').textContent =
+    `${s.valid_trials ?? '—'} / ${((s.respond_rate ?? 0) * 100).toFixed(1)}%`;
+  document.getElementById('res-rt').textContent = s.rt_mean_ms != null ? `${s.rt_mean_ms} ms` : '—';
+  document.getElementById('res-rt-cond').textContent =
+    `Self: ${s.self_rt_ms ?? '—'}ms / Stranger: ${s.stranger_rt_ms ?? '—'}ms`;
+  document.getElementById('res-acc').textContent = s.accuracy != null ? `${(s.accuracy * 100).toFixed(1)}%` : '—';
+
+  const speEl = document.getElementById('res-spe');
+  if (s.SPE_ms != null) {
+    speEl.textContent = `${s.SPE_ms} ms`;
+    speEl.style.color = s.SPE_ms < 0 ? '#27ae60' : '#e74c3c';
+  } else {
+    speEl.textContent = '—';
+  }
+
+  document.getElementById('res-cohensd').textContent = s.cohens_d ?? '—';
+  document.getElementById('res-csv-path').textContent = '📁 CSV: ' + (data.csv_path || '—');
+
+  // 启用下载和保存按钮
+  const btnDL = document.getElementById('btn-download-csv');
+  const btnSave = document.getElementById('btn-save-result');
+  btnDL.disabled = false;
+  btnSave.disabled = false;
+
+  // 存储 CSV 路径用于下载
+  btnDL._csvPath = data.csv_path;
+
+  panel.classList.add('show');
+}
+
+function downloadBackendCSV() {
+  const path = document.getElementById('btn-download-csv')._csvPath;
+  if (!path) { showToast('没有可下载的 CSV', 'error'); return; }
+  // 尝试通过 API 下载，如果失败则提示路径
+  const filename = path.split('\\').pop().split('/').pop();
+  window.open(`${API_BASE}/api/download/${encodeURIComponent(path)}`, '_blank');
+  showToast('CSV 下载已触发: ' + filename, 'info');
+}
+
+function saveBackendToHistory() {
+  if (!backendResult || !backendResult.summary) {
+    showToast('没有可保存的后端结果', 'error');
+    return;
+  }
+  const s = backendResult.summary;
+  const record = {
+    id: Date.now(),
+    timestamp: new Date().toISOString(),
+    P: parseInt(document.getElementById('slider-P').value),
+    T: parseInt(document.getElementById('slider-T').value),
+    W: parseInt(document.getElementById('slider-W').value),
+    M: parseInt(document.getElementById('slider-P').value) + parseInt(document.getElementById('slider-T').value) + parseInt(document.getElementById('slider-W').value),
+    model: backendResult.model,
+    modelName: backendResult.model_name,
+    groupMatch: matchGroup(
+      parseInt(document.getElementById('slider-P').value),
+      parseInt(document.getElementById('slider-T').value),
+      parseInt(document.getElementById('slider-W').value)
+    ),
+    conditions: {},
+    SPE_rt: s.SPE_ms,
+    SPE_v: s.cohens_d,
+    SPE_acc: s.accuracy,
+    csv_path: backendResult.csv_path,
+    figures: backendResult.figures,
+    source: 'backend',
+  };
+
+  // 生成 SPE 曲线用于对比
+  const P = parseInt(document.getElementById('slider-P').value);
+  const W = parseInt(document.getElementById('slider-W').value);
+  record.speCurve = [];
+  for (let t = T_RANGE[0]; t <= T_RANGE[1]; t += 10) {
+    const vSelf = computeVS2(t, P, 1);
+    const vStranger = computeVS2(t, P, 0);
+    const aM = computeAS2(t + W);
+    const rtSelf = estimateRT(vSelf, aM);
+    const rtStranger = estimateRT(vStranger, aM);
+    record.speCurve.push({ T: t, SPE_rt: (rtSelf - rtStranger) * 1000, SPE_v: vSelf - vStranger });
+  }
+
+  // 添加条件信息
+  for (const identity of ['self', 'stranger']) {
+    const ck = identity === 'self' ? 1 : 0;
+    const v = computeVS2(parseInt(document.getElementById('slider-T').value), P, ck);
+    const a = computeAS2(parseInt(document.getElementById('slider-T').value) + W);
+    record.conditions[identity] = { v, a, rt: estimateRT(v, a), acc: estimateAccuracy(v, a) };
+  }
+
+  addToHistory(record);
+  showToast('后端结果已保存到历史记录！', 'success');
 }
 
 function saveCurrentResult() {
+  // 优先保存后端结果
+  if (backendResult && backendResult.summary) {
+    saveBackendToHistory();
+    return;
+  }
   if (!currentResult) { showToast('请先运行模拟', 'error'); return; }
   // Make a deep copy for safe storage
   const saved = JSON.parse(JSON.stringify(currentResult));
   saved.id = Date.now();
   saved.timestamp = new Date().toISOString();
+  saved.source = 'local';
   addToHistory(saved);
   showToast('结果已保存到历史记录！', 'success');
 }
@@ -750,29 +1141,226 @@ function showToast(msg, type) {
 // 8. 事件绑定与初始化
 // =============================================================================
 
+const EXPLORE_COLORS = [
+  '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c',
+  '#e67e22', '#2980b9', '#c0392b', '#27ae60', '#8e44ad', '#16a085',
+];
+
+function getExploreXVar() {
+  const el = document.querySelector('#xvar-btns .xvar-btn.active');
+  return el ? el.dataset.x : 'P';
+}
+
+function getExploreYVars() {
+  const chips = document.querySelectorAll('#yvar-chips .yvar-chip.active');
+  return Array.from(chips).map(c => c.dataset.y);
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+  const content = document.getElementById(tabName);
+  if (btn) btn.classList.add('active');
+  if (content) { content.classList.add('active'); }
+  // 切换到探索 tab 时 resize 图表
+  if (tabName === 'tab-explore' && chartExplore) {
+    setTimeout(() => chartExplore.resize(), 100);
+  }
+  if (tabName === 'tab-overview') {
+    if (chartSPE) chartSPE.resize();
+    if (chartRTBars) chartRTBars.resize();
+    if (chartCompareSPE) chartCompareSPE.resize();
+    if (chartCompareParams) chartCompareParams.resize();
+  }
+}
+
+function runExploreSweep() {
+  const xVar = getExploreXVar();
+  const yVars = getExploreYVars();
+  if (!yVars.length) { showToast('请至少选择一个 Y 轴指标', 'error'); return; }
+
+  const btn = document.getElementById('btn-explore-sweep');
+  btn.disabled = true;
+  btn.textContent = '⏳ 计算中...';
+  showToast('正在从后端获取参数扫描曲线...', 'info');
+
+  const models = [document.getElementById('explore-model1').value];
+  const fixedParams = [{
+    P: parseInt(document.getElementById('explore-fix-P1').value) || 64,
+    T: parseInt(document.getElementById('explore-fix-T1').value) || 200,
+    W: parseInt(document.getElementById('explore-fix-W1').value) || 600,
+  }];
+
+  if (exploreModel2Enabled) {
+    models.push(document.getElementById('explore-model2').value);
+    fixedParams.push({
+      P: parseInt(document.getElementById('explore-fix-P2').value) || 120,
+      T: parseInt(document.getElementById('explore-fix-T2').value) || 200,
+      W: parseInt(document.getElementById('explore-fix-W2').value) || 600,
+    });
+  }
+
+  const wGp = parseFloat(document.getElementById('explore-wgp').value) || 0.5;
+
+  fetch(`${API_BASE}/api/sweep`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ models, sweep_var: xVar, fixed_params: fixedParams, w_gp: wGp }),
+  })
+  .then(res => res.json())
+  .then(data => {
+    btn.disabled = false;
+    btn.textContent = '🔍 生成参数曲线';
+    if (data.error) { showToast('错误: ' + data.error, 'error'); return; }
+    renderExploreChart(data.curves, yVars, xVar);
+    showToast('✅ 参数曲线生成完成！', 'success');
+  })
+  .catch(err => {
+    btn.disabled = false;
+    btn.textContent = '🔍 生成参数曲线';
+    showToast('无法连接后端，请确认服务器已启动', 'error');
+    console.error(err);
+  });
+}
+
+function renderExploreChart(curves, yVars, xVar) {
+  const ctx = document.getElementById('chart-explore').getContext('2d');
+  if (chartExplore) chartExplore.destroy();
+
+  const xLabel = { P: '练习次数 P', T: '刺激呈现时间 T (ms)', W: '反应窗口 W (ms)' }[xVar];
+  const yLabels = {
+    spe_rt: 'SPE RT (ms)', spe_acc: 'SPE ACC',
+    v_self: 'v Self', v_stranger: 'v Stranger',
+    a: 'a (边界)', t0: 't0 (非决策时间)', z: 'z (起点)',
+  };
+
+  const datasets = [];
+  let colorIdx = 0;
+
+  for (const curve of curves) {
+    for (const yv of yVars) {
+      const data = curve[yv];
+      if (!data || data.length === 0) continue;
+      const color = EXPLORE_COLORS[colorIdx % EXPLORE_COLORS.length];
+      const shortModel = curve.model.replace('_', ' ');
+      datasets.push({
+        label: `${yLabels[yv] || yv} — ${curve.fixed.P}/${curve.fixed.T}/${curve.fixed.W} [${shortModel}]`,
+        data,
+        borderColor: color,
+        backgroundColor: color + '20',
+        borderWidth: 2,
+        pointRadius: 1,
+        pointHoverRadius: 5,
+        tension: 0.2,
+        yAxisID: yv === 'spe_rt' ? 'y-spe-rt' : 'y-default',
+      });
+      colorIdx++;
+    }
+  }
+
+  // 确定哪些 y 轴需要存在
+  const hasSPE_RT = yVars.includes('spe_rt');
+
+  chartExplore = new Chart(ctx, {
+    type: 'line',
+    data: { labels: curves[0]?.x_values || [], datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              let val = ctx.parsed.y;
+              if (Math.abs(val) < 0.01) val = val.toExponential(3);
+              else if (Math.abs(val) < 1) val = val.toFixed(4);
+              else val = val.toFixed(2);
+              return `${ctx.dataset.label}: ${val}`;
+            }
+          }
+        },
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { boxWidth: 16, padding: 12, font: { size: 11 }, usePointStyle: true }
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: xLabel, font: { size: 13, weight: 'bold' } },
+          grid: { color: '#eee' },
+        },
+        'y-default': {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          title: { display: true, text: '值', font: { size: 12 } },
+          grid: { color: '#f0f0f0' },
+        },
+        'y-spe-rt': {
+          type: 'linear',
+          display: hasSPE_RT,
+          position: 'right',
+          title: { display: true, text: 'SPE RT (ms)', font: { size: 12, weight: 'bold' } },
+          grid: { drawOnChartArea: false },
+        },
+      },
+    },
+  });
+
+  // 更新 legend 区域
+  const legendDiv = document.getElementById('explore-legend');
+  legendDiv.innerHTML = datasets.map(d =>
+    `<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:3px;background:${d.borderColor};display:inline-block;border-radius:2px;"></span>${d.label}</span>`
+  ).join('');
+}
+
+function toggleModel2() {
+  exploreModel2Enabled = !exploreModel2Enabled;
+  const panel = document.getElementById('model2-panel');
+  const btn = document.getElementById('btn-toggle-model2');
+  if (exploreModel2Enabled) {
+    panel.style.display = 'block';
+    btn.textContent = '− 禁用';
+    btn.style.color = 'var(--accent2)';
+    btn.style.borderColor = 'var(--accent2)';
+  } else {
+    panel.style.display = 'none';
+    btn.textContent = '＋ 启用';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+  }
+}
+
 function init() {
   loadHistory();
   updateSliderLabels();
   renderHistory();
 
-  // 滑块实时更新标签
+  // 标签页切换
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // 模型选择器变更
+  const selectModel = document.getElementById('select-model');
+  selectModel.addEventListener('change', () => {
+    const key = selectModel.value;
+    document.getElementById('val-model').textContent = selectModel.options[selectModel.selectedIndex].text;
+    document.getElementById('model-desc').textContent = MODEL_DESCRIPTIONS[key] || '';
+  });
+  document.getElementById('model-desc').textContent = MODEL_DESCRIPTIONS[selectModel.value] || '';
+
   ['slider-P', 'slider-T', 'slider-W'].forEach(id => {
     document.getElementById(id).addEventListener('input', updateSliderLabels);
   });
 
-  // 运行按钮
   document.getElementById('btn-run').addEventListener('click', runAndShow);
+  document.getElementById('btn-download-csv').addEventListener('click', downloadBackendCSV);
+  document.getElementById('btn-save-result').addEventListener('click', saveBackendToHistory);
 
-  // 保存结果按钮 (在 run 旁边动态添加)
-  const btnRow = document.querySelector('#param-title').closest('.card').querySelector('.btn-row');
-  const saveBtn = document.createElement('button');
-  saveBtn.className = 'btn btn-success btn-sm';
-  saveBtn.id = 'btn-save';
-  saveBtn.textContent = '💾 保存结果';
-  saveBtn.addEventListener('click', saveCurrentResult);
-  btnRow.appendChild(saveBtn);
-
-  // 默认按钮
   document.getElementById('btn-reset').addEventListener('click', () => {
     document.getElementById('slider-P').value = defaultParams.P;
     document.getElementById('slider-T').value = defaultParams.T;
@@ -781,7 +1369,6 @@ function init() {
     showToast('已恢复默认参数', 'info');
   });
 
-  // 预设组按钮
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.getElementById('slider-P').value = btn.dataset.p;
@@ -792,7 +1379,6 @@ function init() {
     });
   });
 
-  // 导出 & 清空
   document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
   document.getElementById('btn-clear-history').addEventListener('click', () => {
     if (history.length === 0) return;
@@ -806,11 +1392,35 @@ function init() {
     }
   });
 
-  // Keyboard shortcut: Ctrl+Enter = Run
+  // --- 探索面板事件 ---
+  document.getElementById('btn-explore-sweep').addEventListener('click', runExploreSweep);
+  document.getElementById('btn-toggle-model2').addEventListener('click', toggleModel2);
+
+  document.querySelectorAll('#xvar-btns .xvar-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#xvar-btns .xvar-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  document.querySelectorAll('#yvar-chips .yvar-chip').forEach(chip => {
+    chip.addEventListener('click', () => chip.classList.toggle('active'));
+  });
+
+  document.getElementById('explore-wgp').addEventListener('input', () => {
+    document.getElementById('explore-wgp-val').textContent = document.getElementById('explore-wgp').value;
+  });
+
+  // Keyboard shortcut: Ctrl+Enter = 根据当前 Tab 执行
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      runAndShow();
+      const activeTab = document.querySelector('.tab-content.active');
+      if (activeTab && activeTab.id === 'tab-explore') {
+        runExploreSweep();
+      } else {
+        runAndShow();
+      }
     }
   });
 
@@ -819,7 +1429,7 @@ function init() {
   updateCharts(currentResult);
   updateCompareCharts();
 
-  document.getElementById('viz-title').textContent = '📊 主可视化';
+  document.getElementById('viz-title').textContent = '📊 主可视化（点击"运行模型生成数据"连接后端）';
 }
 
 // 启动

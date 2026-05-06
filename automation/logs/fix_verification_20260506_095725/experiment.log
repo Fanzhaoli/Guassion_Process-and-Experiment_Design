@@ -1,0 +1,57 @@
+[2026-05-06T09:57:25.999415] [INFO] (0.0s) ============================================================
+[2026-05-06T09:57:26.008067] [INFO] (0.0s) 实验优化自动化流程启动
+[2026-05-06T09:57:26.008367] [INFO] (0.0s) 配置: {
+  "experiment_name": "fix_verification",
+  "design": {
+    "P_values": [
+      0,
+      64,
+      120
+    ],
+    "T_values": [
+      30,
+      100,
+      500
+    ],
+    "W_values": [
+      300,
+      600,
+      1500
+    ],
+    "lhs_points": 10
+  },
+  "experiment": {
+    "n_subjects": 8,
+    "trials_per_condition": 8,
+    "design_type": "mixed",
+    "block_size": 20
+  },
+  "model": {
+    "w_gp": 0.5,
+    "v_noise": 0.3,
+    "a_noise": 0.25,
+    "kernel_type": "rbf"
+  },
+  "iteration": {
+    "n_rounds": 2,
+    "exploration_weight": 0.3,
+    "use_real_data": false
+  },
+  "seed": 42
+}
+[2026-05-06T09:57:26.012755] [INFO] (0.0s) 初始化组件...
+[2026-05-06T09:57:26.013363] [INFO] (0.0s) 组件初始化完成
+[2026-05-06T09:57:26.013587] [INFO] (0.0s) 生成实验设计空间...
+[2026-05-06T09:57:26.021385] [ERROR] (0.0s) 异常: Sample is not a 2D array
+Traceback (most recent call last):
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\pipeline.py", line 138, in run
+    design_df = self._stage_generate_design()
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\pipeline.py", line 204, in _stage_generate_design
+    lhs_df = self.design_space.generate_lhs(design_cfg['lhs_points'])
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\core\design_space.py", line 99, in generate_lhs
+    P_vals = qmc.scale(samples[:, 0], self.P_range[0], self.P_range[1])
+  File "C:\Users\蔡振辛\AppData\Roaming\Python\Python314\site-packages\scipy\stats\_qmc.py", line 151, in scale
+    raise ValueError('Sample is not a 2D array')
+ValueError: Sample is not a 2D array
+
+[2026-05-06T09:57:26.022245] [INFO] (0.0s) 实验完成. 耗时: 0.0s. 成功: False

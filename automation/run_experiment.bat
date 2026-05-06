@@ -167,16 +167,16 @@ echo [2/6] 测试 Pipeline 导入...
 python -c "import sys; sys.path.insert(0,'.'); from automation.pipeline import ExperimentPipeline; print('  pipeline: OK')" 2>&1
 echo.
 echo [3/6] 测试设计空间生成...
-python -c "from automation.core.design_space import DesignSpace; ds=DesignSpace(); df=ds.generate_grid(); print(f'  生成 {len(df)} 个设计点')" 2>&1
+python -c "import sys; sys.path.insert(0,'.'); from automation.core.design_space import DesignSpace; ds=DesignSpace(); df=ds.generate_grid(); print(f'  生成 {len(df)} 个设计点')" 2>&1
 echo.
 echo [4/6] 测试 Sigmoid 模型...
-python -c "from automation.core.sigmoid_model import compute_v_s2, compute_a_s2; v=compute_v_s2(200,64,1); print(f'  v_self(200,64): {float(v):.4f}')" 2>&1
+python -c "import sys; sys.path.insert(0,'.'); from automation.core.sigmoid_model import compute_v_s2, compute_a_s2; v=compute_v_s2(200,64,1); print(f'  v_self(200,64): {float(v):.4f}')" 2>&1
 echo.
 echo [5/6] 测试 EZ-Diffusion...
-python -c "from automation.core.ez_diffusion import ez_diffusion; p=ez_diffusion(0.6, 0.01, 0.85); print(f'  ez: v={p[\"v\"]:.3f}, a={p[\"a\"]:.3f}, ter={p[\"ter\"]:.3f}')" 2>&1
+python -c "import sys; sys.path.insert(0,'.'); from automation.core.ez_diffusion import ez_diffusion; p=ez_diffusion(0.6, 0.01, 0.85); print(f'  ez: v={p[\"v\"]:.3f}, a={p[\"a\"]:.3f}, ter={p[\"ter\"]:.3f}')" 2>&1
 echo.
 echo [6/6] 测试完整生成模型...
-python -c "from automation.core.generative_model import GenerativeModel; import pandas as pd; gm=GenerativeModel(seed=99); ds=gm.design_space; df=ds.generate_grid(['P','T','W'],[0,64,120],[30,200],[300,800]); syn=gm.generate_dataset(df,n_subjects=3,trials_per_condition=5); print(f'  生成 {len(syn)} 试次, {syn.subject.nunique()} 被试'); print(f'  RT均值: {syn[syn.RT.notna()].RT.mean()*1000:.1f}ms, omission率: {syn.omission.mean():.3f}')" 2>&1
+python -c "import sys; sys.path.insert(0,'.'); from automation.core.generative_model import GenerativeModel; import pandas as pd; gm=GenerativeModel(seed=99); ds=gm.design_space; df=ds.generate_grid(['P','T','W'],[0,64,120],[30,200],[300,800]); syn=gm.generate_dataset(df,n_subjects=3,trials_per_condition=5); print(f'  生成 {len(syn)} 试次, {syn.subject.nunique()} 被试'); print(f'  RT均值: {syn[syn.RT.notna()].RT.mean()*1000:.1f}ms, omission率: {syn.omission.mean():.3f}')" 2>&1
 echo.
 echo === 验证完成 ===
 pause

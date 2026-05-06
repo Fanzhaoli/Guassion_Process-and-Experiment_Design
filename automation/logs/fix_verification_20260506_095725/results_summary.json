@@ -1,0 +1,21 @@
+{
+  "run_id": "fix_verification_20260506_095725",
+  "success": false,
+  "start_time": "2026-05-06T09:57:25.999059",
+  "end_time": "2026-05-06T09:57:26.021663",
+  "total_elapsed_s": 0.0,
+  "total_elapsed_min": 0.0,
+  "n_snapshots": 1,
+  "n_errors": 1,
+  "n_warnings": 0,
+  "output_dir": "D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\logs\\fix_verification_20260506_095725",
+  "errors": [
+    {
+      "timestamp": "2026-05-06T09:57:26.021385",
+      "elapsed_s": 0.022,
+      "level": "ERROR",
+      "message": "异常: Sample is not a 2D array\nTraceback (most recent call last):\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\pipeline.py\", line 138, in run\n    design_df = self._stage_generate_design()\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\pipeline.py\", line 204, in _stage_generate_design\n    lhs_df = self.design_space.generate_lhs(design_cfg['lhs_points'])\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\core\\design_space.py\", line 99, in generate_lhs\n    P_vals = qmc.scale(samples[:, 0], self.P_range[0], self.P_range[1])\n  File \"C:\\Users\\蔡振辛\\AppData\\Roaming\\Python\\Python314\\site-packages\\scipy\\stats\\_qmc.py\", line 151, in scale\n    raise ValueError('Sample is not a 2D array')\nValueError: Sample is not a 2D array\n"
+    }
+  ],
+  "warnings": []
+}

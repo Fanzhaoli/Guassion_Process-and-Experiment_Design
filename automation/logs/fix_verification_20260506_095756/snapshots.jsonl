@@ -1,0 +1,6 @@
+{"timestamp": "2026-05-06T09:57:56.854985", "elapsed_s": 0.012, "stage": "init", "data": {"status": "starting"}}
+{"timestamp": "2026-05-06T09:57:56.868850", "elapsed_s": 0.026, "stage": "design_generation", "data": {"n_grid_conditions": 27, "n_lhs_points": 10, "summary": {"n_conditions": 27, "P": {"min": 0, "max": 120, "unique": 3}, "T": {"min": 30, "max": 500, "unique": 3}, "W": {"min": 300, "max": 1500, "unique": 3}, "M": {"min": 330, "max": 2000, "unique": 9}}}}
+{"timestamp": "2026-05-06T09:57:57.064176", "elapsed_s": 0.221, "stage": "sequence_generation", "data": {"total_trials": 6912, "n_subjects": 8, "design_type": "mixed"}}
+{"timestamp": "2026-05-06T09:57:57.152449", "elapsed_s": 0.31, "stage": "real_data_loaded", "data": {"path": "D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\2_Data\\Real_Data\\EXP_data_combined.csv", "n_rows": 26616, "columns": ["groupID", "subjectID", "gender", "age", "handedness", "stage", "trialID", "P", "T", "W", "Shape", "Label", "CorrectKey", "Response", "RT", "Correct", "SourceFile", "GroupInfo"]}}
+{"timestamp": "2026-05-06T09:57:57.155125", "elapsed_s": 0.312, "stage": "model_training", "data": {"use_real_data": false, "is_trained": false}}
+{"timestamp": "2026-05-06T09:57:58.678260", "elapsed_s": 1.835, "stage": "synthetic_generation", "data": {"n_rows": 3456, "n_subjects": 216, "n_omissions": "1181"}}

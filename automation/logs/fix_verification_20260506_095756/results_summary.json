@@ -1,0 +1,21 @@
+{
+  "run_id": "fix_verification_20260506_095756",
+  "success": false,
+  "start_time": "2026-05-06T09:57:56.842901",
+  "end_time": "2026-05-06T09:57:58.998243",
+  "total_elapsed_s": 2.2,
+  "total_elapsed_min": 0.0,
+  "n_snapshots": 6,
+  "n_errors": 1,
+  "n_warnings": 0,
+  "output_dir": "D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\logs\\fix_verification_20260506_095756",
+  "errors": [
+    {
+      "timestamp": "2026-05-06T09:57:58.997875",
+      "elapsed_s": 2.155,
+      "level": "ERROR",
+      "message": "异常: operands could not be broadcast together with shapes (216,) (205,) \nTraceback (most recent call last):\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\pipeline.py\", line 153, in run\n    effect_results = self._stage_effect_analysis(synthetic_data, real_data)\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\pipeline.py\", line 367, in _stage_effect_analysis\n    bf = bayes_factor_paired(\n        synth_valid[synth_valid['label']=='self'].groupby('subject')['RT'].mean().values,\n        synth_valid[synth_valid['label']=='stranger'].groupby('subject')['RT'].mean().values,\n    )\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\core\\effect_size.py\", line 131, in bayes_factor_paired\n    diff = x - y\n           ~~^~~\nValueError: operands could not be broadcast together with shapes (216,) (205,) \n"
+    }
+  ],
+  "warnings": []
+}

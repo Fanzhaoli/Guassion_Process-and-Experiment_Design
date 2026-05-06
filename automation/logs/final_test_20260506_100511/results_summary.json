@@ -1,0 +1,14 @@
+{
+  "run_id": "final_test_20260506_100511",
+  "success": true,
+  "start_time": "2026-05-06T10:05:11.899266",
+  "end_time": "2026-05-06T10:05:15.670061",
+  "total_elapsed_s": 3.8,
+  "total_elapsed_min": 0.1,
+  "n_snapshots": 9,
+  "n_errors": 0,
+  "n_warnings": 0,
+  "output_dir": "D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\logs\\final_test_20260506_100511",
+  "errors": [],
+  "warnings": []
+}

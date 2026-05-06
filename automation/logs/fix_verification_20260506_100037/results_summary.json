@@ -1,0 +1,21 @@
+{
+  "run_id": "fix_verification_20260506_100037",
+  "success": false,
+  "start_time": "2026-05-06T10:00:37.882363",
+  "end_time": "2026-05-06T10:00:40.012308",
+  "total_elapsed_s": 2.1,
+  "total_elapsed_min": 0.0,
+  "n_snapshots": 8,
+  "n_errors": 1,
+  "n_warnings": 0,
+  "output_dir": "D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\logs\\fix_verification_20260506_100037",
+  "errors": [
+    {
+      "timestamp": "2026-05-06T10:00:40.012032",
+      "elapsed_s": 2.13,
+      "level": "ERROR",
+      "message": "异常: 'label'\nTraceback (most recent call last):\n  File \"C:\\Users\\蔡振辛\\AppData\\Roaming\\Python\\Python314\\site-packages\\pandas\\core\\indexes\\base.py\", line 3812, in get_loc\n    return self._engine.get_loc(casted_key)\n           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^\n  File \"pandas/_libs/index.pyx\", line 167, in pandas._libs.index.IndexEngine.get_loc\n  File \"pandas/_libs/index.pyx\", line 196, in pandas._libs.index.IndexEngine.get_loc\n  File \"pandas/_libs/hashtable_class_helper.pxi\", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item\n  File \"pandas/_libs/hashtable_class_helper.pxi\", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item\nKeyError: 'label'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\pipeline.py\", line 159, in run\n    comparison_results = self._stage_model_comparison(design_df, real_data)\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\pipeline.py\", line 480, in _stage_model_comparison\n    comp_df = comparison.compare_condition_predictions(design_df, real_data)\n  File \"D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\core\\generative_model.py\", line 375, in compare_condition_predictions\n    (real_data['W'] == W) & (real_data['label'] == label))\n                             ~~~~~~~~~^^^^^^^^^\n  File \"C:\\Users\\蔡振辛\\AppData\\Roaming\\Python\\Python314\\site-packages\\pandas\\core\\frame.py\", line 4113, in __getitem__\n    indexer = self.columns.get_loc(key)\n  File \"C:\\Users\\蔡振辛\\AppData\\Roaming\\Python\\Python314\\site-packages\\pandas\\core\\indexes\\base.py\", line 3819, in get_loc\n    raise KeyError(key) from err\nKeyError: 'label'\n"
+    }
+  ],
+  "warnings": []
+}

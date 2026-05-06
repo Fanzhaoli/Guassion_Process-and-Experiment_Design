@@ -1,0 +1,14 @@
+{
+  "run_id": "fix_verification_20260506_100329",
+  "success": true,
+  "start_time": "2026-05-06T10:03:29.990057",
+  "end_time": "2026-05-06T10:03:32.372131",
+  "total_elapsed_s": 2.4,
+  "total_elapsed_min": 0.0,
+  "n_snapshots": 9,
+  "n_errors": 0,
+  "n_warnings": 0,
+  "output_dir": "D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\logs\\fix_verification_20260506_100329",
+  "errors": [],
+  "warnings": []
+}

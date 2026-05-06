@@ -16,7 +16,6 @@ set PYTHON_CMD=
 for %%p in (
     "python3"
     "python"
-    "E:\Python\python.exe"
     "%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe"
     "%USERPROFILE%\AppData\Local\Microsoft\WindowsApps\python.exe"
 ) do (

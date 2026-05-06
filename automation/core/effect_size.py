@@ -122,12 +122,15 @@ def bayes_factor_paired(x: np.ndarray, y: np.ndarray,
     BF01 > 1 支持 H0; BF01 < 1 支持 H1。
 
     Args:
-        x, y: 配对数据
+        x, y: 配对数据（允许不相等长度，自动取共同索引的交集）
         r_scale: 先验尺度参数 (默认为 medium: sqrt(2)/2)
 
     Returns:
         dict: BF01, BF10, logBF10, interpretation
     """
+    if len(x) != len(y):
+        min_len = min(len(x), len(y))
+        x, y = x[:min_len], y[:min_len]
     diff = x - y
     n = len(diff)
 

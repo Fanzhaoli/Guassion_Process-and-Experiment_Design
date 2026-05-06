@@ -96,13 +96,15 @@ class DesignSpace:
         sampler = qmc.LatinHypercube(d=3, seed=self.seed)
         samples = sampler.random(n=n_points)
 
-        P_vals = qmc.scale(samples[:, 0], self.P_range[0], self.P_range[1])
-        T_vals = qmc.scale(samples[:, 1], self.T_range[0], self.T_range[1])
-        W_vals = qmc.scale(samples[:, 2], self.W_range[0], self.W_range[1])
+        scaled = qmc.scale(
+            samples,
+            l_bounds=np.array([self.P_range[0], self.T_range[0], self.W_range[0]]),
+            u_bounds=np.array([self.P_range[1], self.T_range[1], self.W_range[1]]),
+        )
 
-        P_vals = np.round(P_vals).astype(int)
-        T_vals = np.round(T_vals).astype(int)
-        W_vals = np.round(W_vals).astype(int)
+        P_vals = np.round(scaled[:, 0]).astype(int)
+        T_vals = np.round(scaled[:, 1]).astype(int)
+        W_vals = np.round(scaled[:, 2]).astype(int)
 
         design_points = []
         for i in range(n_points):

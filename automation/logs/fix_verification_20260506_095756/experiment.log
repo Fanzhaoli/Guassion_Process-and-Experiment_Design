@@ -1,0 +1,75 @@
+[2026-05-06T09:57:56.852616] [INFO] (0.0s) ============================================================
+[2026-05-06T09:57:56.852984] [INFO] (0.0s) 实验优化自动化流程启动
+[2026-05-06T09:57:56.853239] [INFO] (0.0s) 配置: {
+  "experiment_name": "fix_verification",
+  "design": {
+    "P_values": [
+      0,
+      64,
+      120
+    ],
+    "T_values": [
+      30,
+      100,
+      500
+    ],
+    "W_values": [
+      300,
+      600,
+      1500
+    ],
+    "lhs_points": 10
+  },
+  "experiment": {
+    "n_subjects": 8,
+    "trials_per_condition": 8,
+    "design_type": "mixed",
+    "block_size": 20
+  },
+  "model": {
+    "w_gp": 0.5,
+    "v_noise": 0.3,
+    "a_noise": 0.25,
+    "kernel_type": "rbf"
+  },
+  "iteration": {
+    "n_rounds": 2,
+    "exploration_weight": 0.3,
+    "use_real_data": false
+  },
+  "seed": 42
+}
+[2026-05-06T09:57:56.855447] [INFO] (0.0s) 初始化组件...
+[2026-05-06T09:57:56.856253] [INFO] (0.0s) 组件初始化完成
+[2026-05-06T09:57:56.856588] [INFO] (0.0s) 生成实验设计空间...
+[2026-05-06T09:57:56.874430] [INFO] (0.0s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\fix_verification_20260506_095756\design_grid.csv
+[2026-05-06T09:57:56.876149] [INFO] (0.0s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\fix_verification_20260506_095756\design_lhs.csv
+[2026-05-06T09:57:56.876377] [INFO] (0.0s) 设计空间生成完成: 27 个网格点, 10 个LHS点 (耗时 0.0s)
+[2026-05-06T09:57:56.876536] [INFO] (0.0s) 生成实验序列...
+[2026-05-06T09:57:57.093618] [INFO] (0.3s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\fix_verification_20260506_095756\experiment_sequence.csv
+[2026-05-06T09:57:57.093981] [INFO] (0.3s) 实验序列生成完成: 6912 试次, 8 被试 (耗时 0.2s)
+[2026-05-06T09:57:57.094179] [INFO] (0.3s) 加载真实实验数据...
+[2026-05-06T09:57:57.151850] [INFO] (0.3s) T/W 已从秒转换为毫秒
+[2026-05-06T09:57:57.154418] [INFO] (0.3s) 真实数据加载完成: 26616 行 (耗时 0.1s)
+[2026-05-06T09:57:57.154661] [INFO] (0.3s) 训练生成模型...
+[2026-05-06T09:57:57.154957] [INFO] (0.3s) 跳过真实数据训练 (使用默认参数)
+[2026-05-06T09:57:57.155301] [INFO] (0.3s) 模型训练完成 (耗时 0.0s)
+[2026-05-06T09:57:57.155453] [INFO] (0.3s) 生成模拟行为数据...
+[2026-05-06T09:57:58.677564] [INFO] (1.8s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\fix_verification_20260506_095756\synthetic_behavior_data.csv
+[2026-05-06T09:57:58.678532] [INFO] (1.8s) 模拟数据生成完成: 3456 行 (耗时 1.5s)
+[2026-05-06T09:57:58.678742] [INFO] (1.8s) 效应量分析...
+[2026-05-06T09:57:58.997875] [ERROR] (2.2s) 异常: operands could not be broadcast together with shapes (216,) (205,) 
+Traceback (most recent call last):
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\pipeline.py", line 153, in run
+    effect_results = self._stage_effect_analysis(synthetic_data, real_data)
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\pipeline.py", line 367, in _stage_effect_analysis
+    bf = bayes_factor_paired(
+        synth_valid[synth_valid['label']=='self'].groupby('subject')['RT'].mean().values,
+        synth_valid[synth_valid['label']=='stranger'].groupby('subject')['RT'].mean().values,
+    )
+  File "D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\core\effect_size.py", line 131, in bayes_factor_paired
+    diff = x - y
+           ~~^~~
+ValueError: operands could not be broadcast together with shapes (216,) (205,) 
+
+[2026-05-06T09:57:58.998860] [INFO] (2.2s) 实验完成. 耗时: 2.2s. 成功: False

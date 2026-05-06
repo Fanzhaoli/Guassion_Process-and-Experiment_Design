@@ -1,0 +1,75 @@
+[2026-05-06T10:07:30.501389] [INFO] (0.0s) ============================================================
+[2026-05-06T10:07:30.511635] [INFO] (0.0s) 实验优化自动化流程启动
+[2026-05-06T10:07:30.511978] [INFO] (0.0s) 配置: {
+  "experiment_name": "spe_iteration",
+  "design": {
+    "P_values": [
+      0,
+      1,
+      2,
+      4,
+      8,
+      12,
+      16,
+      24,
+      32,
+      48,
+      64,
+      96,
+      120,
+      150
+    ],
+    "T_values": [
+      10,
+      20,
+      30,
+      50,
+      80,
+      100,
+      150,
+      200,
+      280,
+      350,
+      420,
+      500,
+      600
+    ],
+    "W_values": [
+      200,
+      300,
+      400,
+      500,
+      600,
+      800,
+      1000,
+      1200,
+      1500
+    ],
+    "lhs_points": 100
+  },
+  "experiment": {
+    "n_subjects": 50,
+    "trials_per_condition": 30,
+    "design_type": "mixed",
+    "block_size": 40
+  },
+  "model": {
+    "w_gp": 0.5,
+    "v_noise": 0.3,
+    "a_noise": 0.25,
+    "kernel_type": "rbf"
+  },
+  "iteration": {
+    "n_rounds": 10,
+    "exploration_weight": 0.3,
+    "use_real_data": true
+  },
+  "seed": 42
+}
+[2026-05-06T10:07:30.512978] [INFO] (0.0s) 初始化组件...
+[2026-05-06T10:07:30.513373] [INFO] (0.0s) 组件初始化完成
+[2026-05-06T10:07:30.513551] [INFO] (0.0s) 生成实验设计空间...
+[2026-05-06T10:07:30.521640] [INFO] (0.0s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\spe_iteration_20260506_100730\design_grid.csv
+[2026-05-06T10:07:30.522577] [INFO] (0.0s) 数据已保存: D:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design\automation\logs\spe_iteration_20260506_100730\design_lhs.csv
+[2026-05-06T10:07:30.522902] [INFO] (0.0s) 设计空间生成完成: 1638 个网格点, 100 个LHS点 (耗时 0.0s)
+[2026-05-06T10:07:30.523100] [INFO] (0.0s) 生成实验序列...

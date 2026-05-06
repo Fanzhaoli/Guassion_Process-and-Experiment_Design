@@ -2,11 +2,12 @@
 命令行入口 - 一键启动自动化迭代流程
 
 用法:
-  python -m automation.cli                          # 默认配置运行
-  python -m automation.cli --rounds 10              # 指定迭代轮数
-  python -m automation.cli --config config.json     # 从JSON文件加载配置
-  python -m automation.cli --quick                  # 快速模式 (小规模验证)
-  python -m automation.cli --profile research       # 研究级配置
+  python cli.py                           默认配置运行 (从 automation/ 目录运行)
+  python -m automation.cli                从项目根目录运行
+  python cli.py --rounds 10              指定迭代轮数
+  python cli.py --config config.json     从JSON文件加载配置
+  python cli.py --quick                  快速模式 (小规模验证)
+  python cli.py --profile research       研究级配置
 """
 
 import sys
@@ -15,8 +16,11 @@ import argparse
 from pathlib import Path
 
 # 设置项目根目录
+# 优先使用模块运行时 Python 的工作目录；fallback 到 cli.py 所在目录的父目录
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
+
+# 如果当前 sys.path 的第一个元素不是项目根目录，则插入
+if not any(str(PROJECT_ROOT) == p for p in sys.path):
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
@@ -101,6 +105,7 @@ def get_profile_config(profile: str) -> dict:
             'iteration': {
                 'n_rounds': 2,
                 'exploration_weight': 0.3,
+                'use_real_data': True,
             },
         },
         'standard': {
@@ -119,6 +124,7 @@ def get_profile_config(profile: str) -> dict:
             'iteration': {
                 'n_rounds': 5,
                 'exploration_weight': 0.3,
+                'use_real_data': True,
             },
         },
         'research': {
@@ -137,6 +143,7 @@ def get_profile_config(profile: str) -> dict:
             'iteration': {
                 'n_rounds': 10,
                 'exploration_weight': 0.3,
+                'use_real_data': True,
             },
         },
     }

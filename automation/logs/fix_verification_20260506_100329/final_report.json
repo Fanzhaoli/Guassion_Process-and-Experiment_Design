@@ -1,0 +1,76 @@
+{
+  "run_id": "fix_verification_20260506_100329",
+  "timestamp": "2026-05-06 10:03:32",
+  "config_summary": {
+    "design_space_size": 27,
+    "n_subjects": 8,
+    "w_gp": 0.5
+  },
+  "design_summary": {
+    "n_conditions": 27,
+    "P": {
+      "min": 0,
+      "max": 120,
+      "unique": 3
+    },
+    "T": {
+      "min": 30,
+      "max": 500,
+      "unique": 3
+    },
+    "W": {
+      "min": 300,
+      "max": 1500,
+      "unique": 3
+    },
+    "M": {
+      "min": 330,
+      "max": 2000,
+      "unique": 9
+    }
+  },
+  "synthetic_summary": {
+    "n_rows": 3456,
+    "mean_rt_ms": 610.2145054945029,
+    "omission_rate": 0.34172453703703703
+  },
+  "effect_analysis": {
+    "synthetic_SPE": {
+      "SPE_ms_mean": -227.00016840882213,
+      "SPE_ms_std": 272.8047150206342,
+      "cohens_d": -0.8320976724748048,
+      "t_stat": -11.913825581662989,
+      "p_value": 3.478217251177915e-25,
+      "n_subjects": 205,
+      "power": NaN,
+      "BF01": 4.137001489455283e+208,
+      "BF10": 2.417209668763425e-209,
+      "interpretation": "decisive_H0"
+    }
+  },
+  "optimization": {
+    "n_rounds": 2,
+    "uncertainty": {},
+    "n_strong_spe_regions": 400,
+    "spe_boundaries": {
+      "strong": 400,
+      "moderate": 0,
+      "weak": 0,
+      "none": 0
+    }
+  },
+  "model_comparison": {
+    "n_conditions": 8,
+    "pure_mean_rmse": 0.5336403224725907,
+    "hybrid_mean_rmse": 1.377907769024961,
+    "mean_improvement": -0.8442674465523703,
+    "hybrid_better_pct": 37.5,
+    "improvement_t_stat": -1.043317822709512,
+    "improvement_p_value": 0.3314869841295108
+  },
+  "run_stats": {
+    "total_elapsed_s": 2.4,
+    "python_version": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]"
+  },
+  "all_outputs_path": "D:\\GitHub_programe\\GitHub\\Guassion-Process-Experiment-Design\\automation\\logs\\fix_verification_20260506_100329"
+}

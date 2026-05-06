@@ -364,10 +364,9 @@ class ExperimentPipeline:
                     d = np.mean(spe_values) / np.std(spe_values, ddof=1)
 
                     # Bayes Factor
-                    bf = bayes_factor_paired(
-                        synth_valid[synth_valid['label']=='self'].groupby('subject')['RT'].mean().values,
-                        synth_valid[synth_valid['label']=='stranger'].groupby('subject')['RT'].mean().values,
-                    )
+                    self_rt_vals = synth_valid[synth_valid['label']=='self'].groupby('subject')['RT'].mean().values if 'label' in synth_valid.columns else synth_valid[synth_valid['Label']=='self'].groupby('subject')['RT'].mean().values
+                    stranger_rt_vals = synth_valid[synth_valid['label']=='stranger'].groupby('subject')['RT'].mean().values if 'label' in synth_valid.columns else synth_valid[synth_valid['Label']=='stranger'].groupby('subject')['RT'].mean().values
+                    bf = bayes_factor_paired(self_rt_vals, stranger_rt_vals)
 
                     # G-power
                     power = g_power_analysis(d, len(spe_values), test_type='paired')
@@ -466,12 +465,12 @@ class ExperimentPipeline:
         return optimization
 
     def _stage_model_comparison(self, design_df: pd.DataFrame,
-                                 real_data: pd.DataFrame) -> Dict:
+                                real_data: pd.DataFrame) -> Dict:
         """Stage 9: 模型比较"""
         self.logger.log("模型比较...", 'INFO')
         stage_start = time.time()
 
-        if real_data is None:
+        if real_data is None or len(real_data) == 0:
             self.logger.log("无真实数据, 跳过模型比较", 'INFO')
             return {}
 
