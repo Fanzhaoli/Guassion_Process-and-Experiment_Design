@@ -40,9 +40,7 @@ df_match = df_f[matching_mask].copy()
 print(f"过滤 Matching 试次后: {len(df_match)} 行")
 
 df_match["identity"] = df_match["Label"].map({"self": 1, "stranger": 0})
-
 df_match["RT_num"] = pd.to_numeric(df_match["RT"], errors="coerce")
-
 df_match["omission"] = df_match["RT_num"].isna().astype(int)
 df_match["T_s"] = pd.to_numeric(df_match["T"], errors="coerce")
 df_match["W_s"] = pd.to_numeric(df_match["W"], errors="coerce")
@@ -54,9 +52,7 @@ df_match["rt"] = np.where(
     df_match["RT_num"],
 )
 
-df_match["response"] = np.where(
-    df_match["Correct"] == 1, 1, 0
-)
+df_match["response"] = np.where(df_match["Correct"] == 1, 1, 0)
 
 for gid in sorted(df_match["groupID"].unique()):
     gdf = df_match[df_match["groupID"] == gid].copy()
@@ -82,10 +78,10 @@ for gid in sorted(df_match["groupID"].unique()):
     n_valid = (hddm_df["omission"] == 0).sum()
     acc = hddm_df.loc[hddm_df["omission"] == 0, "response"].mean()
 
-    print(f"\n  Group {gid} (P={P_val}, T={T_val}ms, W={W_val}ms) → {fn}")
+    print(f"\n  Group {gid} (P={P_val}, T={T_val}ms, W={W_val}ms) -> {fn}")
     print(f"    被试: {n_subj} | 试次: {n_trials}")
     print(f"    有效试次: {n_valid} | 遗漏试次: {n_omissions} ({omission_rate:.1f}%)")
     print(f"    有效试次正确率: {acc:.3f}")
 
-print(f"\n所有 HDDM 数据已保存到: {OUT_DIR}")
+print(f"\nHDDM 就绪数据已保存到: {OUT_DIR}")
 print("=" * 60)
