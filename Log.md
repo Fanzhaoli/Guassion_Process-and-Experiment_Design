@@ -182,3 +182,62 @@ python 1_Code/Python_for_Check/Cross-validation/locv_validation.py
 # Step 4: 外部验证 - 寻找最优新设计点
 python 1_Code/Python_for_Check/External_verification/find_design_points.py
 ```
+
+---
+
+## v0.3 — Generate_Data_v4.ipynb 可逐行运行的 Jupyter Notebook
+
+**日期**: 2026-05-06  
+**责任人**: AI Assistant (Trae Agent)
+
+### 新增功能
+
+- **`Generate_Data_v4.ipynb`** — 完整的 GP+Sigmoid 混合生成模型 Jupyter Notebook
+  - 路径: `1_Code/Python_for_Generate/Generate_Data_v4.ipynb`
+  - 26 个 cells (14 markdown + 12 code)，可逐行独立运行
+  - 包含完整的 Sigmoid 校准、GP+Sigmoid 模型训练、LOCV 交叉验证、外部验证设计
+  - 自动定位项目根目录（通过 AGENTS.md），支持不同环境移植
+  - 使用相对路径，所有输出保存到 `2_Data/Generate_Data/` 和 `3_Figures/` 下
+
+### Notebook 结构
+
+| Cell | 类型 | 内容 |
+|------|------|------|
+| 0 | Markdown | 标题与工作流概览 |
+| 1 | Markdown | Cell 1 说明 |
+| 2 | Code | 环境设置与路径配置 |
+| 3 | Markdown | Cell 2 说明 |
+| 4 | Code | Sigmoid 理论先验函数 |
+| 5 | Markdown | Cell 3 说明 |
+| 6 | Code | 加载 HDDM 参数 |
+| 7 | Markdown | Cell 4 说明 |
+| 8 | Code | Sigmoid 参数校准（差分进化） |
+| 9 | Markdown | Cell 5 说明 |
+| 10 | Code | GP+Sigmoid 混合模型类定义 |
+| 11 | Markdown | Cell 6 说明 |
+| 12 | Code | 训练混合模型 |
+| 13 | Markdown | Cell 7 说明 |
+| 14 | Code | 训练集拟合评估 |
+| 15 | Markdown | Cell 8 说明 |
+| 16 | Code | 可视化：真实 vs 预测散点图 + SPE对比 |
+| 17 | Markdown | Cell 9 说明 |
+| 18 | Code | LOCV 留一条件交叉验证 |
+| 19 | Markdown | Cell 10 说明 |
+| 20 | Code | LOCV 可视化 |
+| 21 | Markdown | Cell 11 说明 |
+| 22 | Code | 外部验证：寻找最优新设计点 |
+| 23 | Markdown | Cell 12 说明 |
+| 24 | Code | 外部验证可视化：不确定性表面图 |
+| 25 | Markdown | 输出文件清单与下一步建议 |
+
+### 使用方式
+
+```bash
+# 启动 Jupyter (项目根目录)
+jupyter notebook
+
+# 打开文件
+1_Code/Python_for_Generate/Generate_Data_v4.ipynb
+
+# 按顺序逐 Cell 运行 (Shift+Enter)
+```

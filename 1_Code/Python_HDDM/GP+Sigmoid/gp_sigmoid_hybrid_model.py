@@ -154,17 +154,20 @@ class GPSigmoidHybridModel:
         t_sig = np.full(n, self._calib_params.get("t_baseline", 0.35))
         z_sig = np.full(n, self._calib_params.get("z_baseline", 0.55))
 
-        v_residual_pred, v_residual_std = self.gp_v_self.predict(X, return_std=True)
+        v_self_residual_pred, v_self_residual_std = self.gp_v_self.predict(X, return_std=True)
+        v_stranger_residual_pred, v_stranger_residual_std = self.gp_v_stranger.predict(X, return_std=True)
         a_pred, a_std = self.gp_a.predict(X, return_std=True)
         t_pred, t_std = self.gp_t.predict(X, return_std=True)
         z_pred, z_std = self.gp_z.predict(X, return_std=True)
 
-        v_final = np.where(cond_arr == 1, v_sig + v_residual_pred,
-                           self.sigmoid_v_prediction(T_arr, P_arr, np.zeros(n),
-                                                     self._calib_params) +
-                           self.gp_v_stranger.predict(X, return_std=False))
-        v_residual_pred_s = self.gp_v_stranger.predict(X, return_std=True)
-        v_final = np.where(cond_arr == 1, v_final, v_residual_pred_s[0])
+        v_self_sig = self.sigmoid_v_prediction(T_arr, P_arr, np.ones(n), self._calib_params)
+        v_stranger_sig = self.sigmoid_v_prediction(T_arr, P_arr, np.zeros(n), self._calib_params)
+        v_final = np.where(
+            cond_arr == 1,
+            v_self_sig + v_self_residual_pred,
+            v_stranger_sig + v_stranger_residual_pred,
+        )
+        v_std = np.where(cond_arr == 1, v_self_residual_std, v_stranger_residual_std)
 
         a_final = a_sig + a_pred
         t_final = t_sig + t_pred
@@ -175,7 +178,7 @@ class GPSigmoidHybridModel:
         z_final = np.clip(z_final, 0.01, a_final - 0.01)
 
         if return_std:
-            return (v_final, a_final, t_final, z_final), (v_residual_std, a_std, t_std, z_std)
+            return (v_final, a_final, t_final, z_final), (v_std, a_std, t_std, z_std)
         return v_final, a_final, t_final, z_final
 
     def predict_params_full(self, P, T, W):
