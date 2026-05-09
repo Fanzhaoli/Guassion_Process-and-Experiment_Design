@@ -1,0 +1,241 @@
+
+========================================
+文件夹分析摘要
+========================================
+分析时间: 2026-05-08 13:20:37
+项目路径: d:\GitHub_programe\GitHub\Guassion-Process-Experiment-Design
+
+【文件统计】
+- 总文件数: 40535
+- 总大小: 1676.39 MB
+
+【分类统计】
+- 虚拟环境文件: 39638 个 (1057.17 MB)
+- Checkpoint文件: 3 个
+- 建议删除文件: 39641 个
+- 重复文件: 28419 个
+
+【内容重复文件组】
+
+重复组 (2个文件):
+  - 1_Code\.Rproj.user\shared\notebooks\FC7AAEB3-S2 ana\1\s\cftnun54p3m5h\00000f.csv
+  - 1_Code\R_for_Check\.Rproj.user\shared\notebooks\EA80EB01-Check_Generate_Data\1\s\cvnc6p8kn0m9g\00000f.csv
+
+重复组 (2个文件):
+  - 1_Code\.Rproj.user\shared\notebooks\FC7AAEB3-S2 ana\1\s\cikbbkn2cyiqx\00000f.csv
+  - 1_Code\R_for_Check\.Rproj.user\shared\notebooks\EA80EB01-Check_Generate_Data\1\s\cpynnj60rgvpi\00000f.csv
+
+重复组 (2个文件):
+  - 1_Code\.Rproj.user\shared\notebooks\FC7AAEB3-S2 ana\1\s\cjmb646fef13t\00000f.csv
+  - 1_Code\R_for_Check\.Rproj.user\shared\notebooks\EA80EB01-Check_Generate_Data\1\s\cuywrihq6bvdf\00000f.csv
+
+重复组 (2个文件):
+  - 1_Code\.Rproj.user\shared\notebooks\FC7AAEB3-S2 ana\1\s\ckrx8osh03rgf\00000f.csv
+  - 1_Code\R_for_Check\.Rproj.user\shared\notebooks\EA80EB01-Check_Generate_Data\1\s\c1m9kdveh7iks\00000f.csv
+
+重复组 (2个文件):
+  - 1_Code\.Rproj.user\shared\notebooks\FC7AAEB3-S2 ana\1\s\cncrvg10r2o7a\00000f.csv
+  - 1_Code\R_for_Check\.Rproj.user\shared\notebooks\EA80EB01-Check_Generate_Data\1\s\clya22hps8lsg\00000f.csv
+
+重复组 (4个文件):
+  - 2_Data\Generate_Data\Generate_Data_v2.4.2_checks\gp_ddm_v2.4.2_large.csv
+  - 2_Data\Generate_Data\Generate_Data_v2.4.2_checks\gp_ddm_v2.4.2_small.csv
+  - 2_Data\Generate_Data\Generate_Data_v2.4.3_checks\gp_ddm_v2.4.2_small.csv
+  - 2_Data\Generate_Data\Generate_Data_v2.4.3_checks\gp_ddm_v2.4.3_large.csv
+
+重复组 (2个文件):
+  - 2_Data\Generate_Data\Generate_Data_v2.4_checks\gp_ddm_v2.4_Large.csv
+  - 2_Data\Generate_Data\Generate_Data_v2.4_checks\gp_ddm_v2.4_small.csv
+
+重复组 (2个文件):
+  - 2_Data\Generate_Data\GP_Sigmoid_Cleaned\step2_sensitivity_metadata_corrected_aggregated.csv
+  - 2_Data\Generate_Data\GP_Sigmoid_Cleaned\step3_cleaned_hddm_params_main.csv
+
+重复组 (2个文件):
+  - 2_Data\Generate_Data\GP_Sigmoid_Cleaned\step2_sensitivity_metadata_corrected_keep_all.csv
+  - 2_Data\Generate_Data\GP_Sigmoid_Cleaned\step3_hddm_params_metadata_corrected_by_group.csv
+
+重复组 (2个文件):
+  - 3_Figures\Step1_Generative_Checks\SPE_summary.csv
+  - 3_Figures\Step1_Generative_Checks_v1\SPE_summary.csv
+
+【同名文件统计】
+
+'.gitignore' 出现在 6 个位置:
+  - .gitignore
+  - .venv\.gitignore
+  - .venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\.gitignore
+  - .venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\.gitignore
+  - 1_Code\.venv\.gitignore
+  - 1_Code\.venv\Lib\site-packages\arviz_base\example_data\.gitignore
+
+'README.md' 出现在 11 个位置:
+  - README.md
+  - .venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_plugins\extensions\README.md
+  - .venv\Lib\site-packages\sklearn\externals\array_api_compat\README.md
+  - .venv\Lib\site-packages\sklearn\externals\array_api_extra\README.md
+  - .venv\Lib\site-packages\zmq\backend\cffi\README.md
+  - 1_Code\.venv\Lib\site-packages\arviz_base\example_data\README.md
+  - 1_Code\.venv\Lib\site-packages\sklearn\externals\array_api_compat\README.md
+  - 1_Code\.venv\Lib\site-packages\sklearn\externals\array_api_extra\README.md
+  - 1_Code\Python_for_Check\Sigmoid_Optimized\README.md
+  - 1_Code\Python_HDDM\README.md
+  - automation\README.md
+
+'pyvenv.cfg' 出现在 2 个位置:
+  - .venv\pyvenv.cfg
+  - 1_Code\.venv\pyvenv.cfg
+
+'decorator.py' 出现在 2 个位置:
+  - .venv\Lib\site-packages\decorator.py
+  - .venv\Lib\site-packages\jedi\inference\value\decorator.py
+
+'jupyter.py' 出现在 5 个位置:
+  - .venv\Lib\site-packages\jupyter.py
+  - .venv\Lib\site-packages\pip\_vendor\rich\jupyter.py
+  - 1_Code\.venv\Lib\site-packages\jupyter.py
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\rich\jupyter.py
+  - 1_Code\.venv\Lib\site-packages\rich\jupyter.py
+
+'pylab.py' 出现在 5 个位置:
+  - .venv\Lib\site-packages\pylab.py
+  - .venv\Lib\site-packages\IPython\core\magics\pylab.py
+  - .venv\Lib\site-packages\matplotlib\pylab.py
+  - 1_Code\.venv\Lib\site-packages\pylab.py
+  - 1_Code\.venv\Lib\site-packages\matplotlib\pylab.py
+
+'six.py' 出现在 4 个位置:
+  - .venv\Lib\site-packages\six.py
+  - .venv\Lib\site-packages\pip\_vendor\urllib3\packages\six.py
+  - 1_Code\.venv\Lib\site-packages\six.py
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\urllib3\packages\six.py
+
+'threadpoolctl.py' 出现在 2 个位置:
+  - .venv\Lib\site-packages\threadpoolctl.py
+  - 1_Code\.venv\Lib\site-packages\threadpoolctl.py
+
+'py.typed' 出现在 97 个位置:
+  - .venv\Lib\site-packages\asttokens\py.typed
+  - .venv\Lib\site-packages\comm\py.typed
+  - .venv\Lib\site-packages\contourpy\py.typed
+  - .venv\Lib\site-packages\cycler\py.typed
+  - .venv\Lib\site-packages\debugpy\py.typed
+  - .venv\Lib\site-packages\executing\py.typed
+  - .venv\Lib\site-packages\fontTools\misc\plistlib\py.typed
+  - .venv\Lib\site-packages\ipykernel\py.typed
+  - .venv\Lib\site-packages\IPython\py.typed
+  - .venv\Lib\site-packages\jupyter_client\py.typed
+  - .venv\Lib\site-packages\jupyter_core\py.typed
+  - .venv\Lib\site-packages\kiwisolver\py.typed
+  - .venv\Lib\site-packages\matplotlib\py.typed
+  - .venv\Lib\site-packages\matplotlib_inline\py.typed
+  - .venv\Lib\site-packages\numpy\py.typed
+  - .venv\Lib\site-packages\packaging\py.typed
+  - .venv\Lib\site-packages\parso\py.typed
+  - .venv\Lib\site-packages\PIL\py.typed
+  - .venv\Lib\site-packages\pip\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\cachecontrol\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\certifi\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\dependency_groups\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\distro\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\idna\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\packaging\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\platformdirs\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\pyproject_hooks\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\resolvelib\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\rich\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\tomli\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\tomli_w\py.typed
+  - .venv\Lib\site-packages\pip\_vendor\truststore\py.typed
+  - .venv\Lib\site-packages\platformdirs\py.typed
+  - .venv\Lib\site-packages\prompt_toolkit\py.typed
+  - .venv\Lib\site-packages\pure_eval\py.typed
+  - .venv\Lib\site-packages\pyparsing\py.typed
+  - .venv\Lib\site-packages\sklearn\externals\array_api_compat\py.typed
+  - .venv\Lib\site-packages\sklearn\externals\array_api_extra\py.typed
+  - .venv\Lib\site-packages\stack_data\py.typed
+  - .venv\Lib\site-packages\tornado\py.typed
+  - .venv\Lib\site-packages\traitlets\py.typed
+  - .venv\Lib\site-packages\wcwidth\py.typed
+  - .venv\Lib\site-packages\zmq\py.typed
+  - 1_Code\.venv\Lib\site-packages\arviz\py.typed
+  - 1_Code\.venv\Lib\site-packages\arviz_base\py.typed
+  - 1_Code\.venv\Lib\site-packages\arviz_plots\py.typed
+  - 1_Code\.venv\Lib\site-packages\arviz_stats\py.typed
+  - 1_Code\.venv\Lib\site-packages\attr\py.typed
+  - 1_Code\.venv\Lib\site-packages\attrs\py.typed
+  - 1_Code\.venv\Lib\site-packages\contourpy\py.typed
+  - 1_Code\.venv\Lib\site-packages\cycler\py.typed
+  - 1_Code\.venv\Lib\site-packages\filelock\py.typed
+  - 1_Code\.venv\Lib\site-packages\fontTools\misc\plistlib\py.typed
+  - 1_Code\.venv\Lib\site-packages\jupyter_core\py.typed
+  - 1_Code\.venv\Lib\site-packages\kanren\py.typed
+  - 1_Code\.venv\Lib\site-packages\kiwisolver\py.typed
+  - 1_Code\.venv\Lib\site-packages\markdown_it\py.typed
+  - 1_Code\.venv\Lib\site-packages\matplotlib\py.typed
+  - 1_Code\.venv\Lib\site-packages\mdurl\py.typed
+  - 1_Code\.venv\Lib\site-packages\narwhals\py.typed
+  - 1_Code\.venv\Lib\site-packages\nbformat\py.typed
+  - 1_Code\.venv\Lib\site-packages\numba\typed\py.typed
+  - 1_Code\.venv\Lib\site-packages\numpy\py.typed
+  - 1_Code\.venv\Lib\site-packages\packaging\py.typed
+  - 1_Code\.venv\Lib\site-packages\PIL\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\cachecontrol\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\certifi\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\dependency_groups\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\distro\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\idna\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\packaging\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\platformdirs\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\pyproject_hooks\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\resolvelib\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\rich\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\tomli\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\tomli_w\py.typed
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\truststore\py.typed
+  - 1_Code\.venv\Lib\site-packages\platformdirs\py.typed
+  - 1_Code\.venv\Lib\site-packages\pyparsing\py.typed
+  - 1_Code\.venv\Lib\site-packages\pytensor\py.typed
+  - 1_Code\.venv\Lib\site-packages\referencing\py.typed
+  - 1_Code\.venv\Lib\site-packages\rich\py.typed
+  - 1_Code\.venv\Lib\site-packages\rpds\py.typed
+  - 1_Code\.venv\Lib\site-packages\setuptools\_vendor\importlib_metadata\py.typed
+  - 1_Code\.venv\Lib\site-packages\setuptools\_vendor\jaraco\context\py.typed
+  - 1_Code\.venv\Lib\site-packages\setuptools\_vendor\jaraco\functools\py.typed
+  - 1_Code\.venv\Lib\site-packages\setuptools\_vendor\more_itertools\py.typed
+  - 1_Code\.venv\Lib\site-packages\setuptools\_vendor\packaging\py.typed
+  - 1_Code\.venv\Lib\site-packages\setuptools\_vendor\platformdirs\py.typed
+  - 1_Code\.venv\Lib\site-packages\setuptools\_vendor\tomli\py.typed
+  - 1_Code\.venv\Lib\site-packages\sklearn\externals\array_api_compat\py.typed
+  - 1_Code\.venv\Lib\site-packages\sklearn\externals\array_api_extra\py.typed
+  - 1_Code\.venv\Lib\site-packages\traitlets\py.typed
+  - 1_Code\.venv\Lib\site-packages\xarray\py.typed
+  - 1_Code\.venv\Lib\site-packages\xarray_einstats\py.typed
+
+'util.py' 出现在 25 个位置:
+  - .venv\Lib\site-packages\asttokens\util.py
+  - .venv\Lib\site-packages\debugpy\common\util.py
+  - .venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\winappdbg\util.py
+  - .venv\Lib\site-packages\fontTools\merge\util.py
+  - .venv\Lib\site-packages\fontTools\subset\util.py
+  - .venv\Lib\site-packages\numpy\f2py\tests\util.py
+  - .venv\Lib\site-packages\pandas\tests\copy_view\util.py
+  - .venv\Lib\site-packages\pip\_vendor\distlib\util.py
+  - .venv\Lib\site-packages\pip\_vendor\pygments\util.py
+  - .venv\Lib\site-packages\pygments\util.py
+  - .venv\Lib\site-packages\pyparsing\util.py
+  - .venv\Lib\site-packages\tornado\util.py
+  - .venv\Lib\site-packages\tornado\test\util.py
+  - 1_Code\.venv\Lib\site-packages\fontTools\merge\util.py
+  - 1_Code\.venv\Lib\site-packages\fontTools\subset\util.py
+  - 1_Code\.venv\Lib\site-packages\kanren\util.py
+  - 1_Code\.venv\Lib\site-packages\numpy\f2py\tests\util.py
+  - 1_Code\.venv\Lib\site-packages\pandas\tests\copy_view\util.py
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\distlib\util.py
+  - 1_Code\.venv\Lib\site-packages\pip\_vendor\pygments\util.py
+  - 1_Code\.venv\Lib\site-packages\pygments\util.py
+  - 1_Code\.venv\Lib\site-packages\pymc\util.py
+  - 1_Code\.venv\Lib\site-packages\pymc\gp\util.py
+  - 1_Code\.venv\Lib\site-packages\pyparsing\util.py
+  - 1_Code\.venv\Lib\site-packages\setuptools\_distutils\util.py

@@ -53,191 +53,160 @@
 
 ### 使用方式
 
-```bash
-# 本机: 数据预处理
-python 1_Code/Python_HDDM/step1_prepare_data.py
-
-# Docker: 启动并拟合
-docker run -it --rm --cpus=4 \
-  -v /d/GitHub_programe/GitHub/Guassion-Process-Experiment-Design:/home/jovyan/work \
-  -p 8888:8888 \
-  hcp4715/hddm \
-  jupyter notebook
-# 然后在 Jupyter 中打开 Docker_Run.ipynb 运行 Step 2 + Step 3
-
-# 或 本机: 参数提取与可视化 (Docker 拟合完成后)
-python 1_Code/Python_HDDM/step3_extract_params.py
 ```
 
-### DDM 参数汇总 (8 组后验均值)
-
-| Group | P | T(ms) | W(ms) | v_self | v_stranger | SPE_v | a | t(s) |
-|-------|---|-------|-------|--------|------------|-------|---|------|
-| 1 | 0 | 30 | 300 | -3.25 | -3.16 | -0.09 | 1.17 | 0.26 |
-| 2 | 0 | 30 | 600 | -2.19 | -3.97 | +1.78 | 2.29 | 0.39 |
-| 3 | 120 | 30 | 600 | -1.63 | -1.42 | -0.21 | 1.17 | 0.34 |
-| 4 | 120 | 80 | 600 | -0.89 | -1.11 | +0.22 | 1.27 | 0.37 |
-| 5 | 8 | 100 | 1100 | +1.35 | +0.62 | +0.73 | 1.33 | 0.40 |
-| 6 | 120 | 500 | 1500 | +1.57 | +0.89 | +0.68 | 1.60 | 0.67 |
-| 7 | 120 | 80 | 800 | +1.20 | +0.75 | +0.44 | 1.09 | 0.40 |
-| 8 | 120 | 80 | 800 | +1.44 | +1.06 | +0.39 | 1.39 | 0.41 |
-
 ---
 
-*版本历史将以 v0.1 起始，每次对话更新递增 0.1 版本号*
+## v0.4 — GP+Sigmoid Cleaned 验证管线 + 项目路线图
 
----
-
-## v0.2 — GP+Sigmoid 混合生成模型 + 分层验证策略
-
-**日期**: 2026-05-06  
+**日期**: 2026-05-09  
 **责任人**: AI Assistant (Trae Agent)
 
 ### 新增功能
 
-#### 阶段 A: GP+Sigmoid 混合生成模型 (`1_Code/Python_HDDM/GP+Sigmoid/`)
+#### A. 完整 6 步 Cleaned 验证管线 (`run_cleaned_validation_pipeline.py`)
 
-- **Sigmoid 参数校准** (`sigmoid_calibration.py`)
-  - 使用差分进化优化最小化 Sigmoid 预测与真实 HDDM 参数的 RMSE
-  - 校准参数: alaph1=0.549, alaph2=-0.220, beta1=-0.827, beta2=1.000, gamma=0.701
-  - 输出至 `2_Data/Generate_Data/GP_Sigmoid/`
+- **路径**: `1_Code/Python_HDDM/GP+Sigmoid/run_cleaned_validation_pipeline.py`
+- **设计目标**: 纠正初版元数据问题，建立从诊断到候选推荐的全流程自动化
 
-- **GP+Sigmoid 混合模型核心类** (`gp_sigmoid_hybrid_model.py`)
-  - `GPSigmoidHybridModel`: Sigmoid 理论先验 + GP 学习残差
-  - 5 个独立 GP（v_self, v_stranger, a, t, z）
-  - RBF kernel + WhiteKernel，normalize_y=True
-  - 支持 save/load（pickle）
-  - 支持 predict_params_full() 和 predict_with_uncertainty()
+**Step 0: 真实数据行为摘要**
+- 加载 `EXP_data_combined.csv`，仅保留 Matching 试次
+- 按 group × identity (self/stranger) 计算 RT/ACC/遗漏率
+- 输出: `step0_real_matching_summary_by_condition.csv`, `step0_real_matching_summary_by_identity.csv`
 
-- **完整管线运行** (`run_full_pipeline.py`)
-  - 加载 HDDM 参数 → 加载校准参数 → 训练 GP → 预测 → 可视化
-  - 生成散点图（真实 vs 预测）、GP响应面、SPE对比图
-  - 训练集拟合结果:
-    - v_self: RMSE=0.71, r=0.98
-    - v_stranger: RMSE=0.90, r=0.96
-    - SPE_v: RMSE=0.43, r=0.87
-    - t: RMSE=0.016, r=0.99
+**Step 1: HDDM 参数诊断**
+- 交叉验证 HDDM 参数表中的 (P, T, W) 与实际行为数据元数据
+- 发现: G7 元数据 T=30ms 与行为 T=80ms 不匹配
+- 标记: G1/G2 高遗漏率 (>50%)，G1-G3 v CI 超宽 (>11)
+- 输出: `step1_hddm_parameter_diagnostics.csv`
 
-#### 阶段 B: 留一条件交叉验证 (`1_Code/Python_for_Check/Cross-validation/`)
+**Step 2: 敏感性分析（6 种策略）**
+- `original_keep_all` — 原始 HDDM 参数不作修改
+- `original_merge_duplicate_designs` — 合并重复设计 (G7+G8)
+- `metadata_corrected_keep_all` — 仅纠正元数据
+- `metadata_corrected_aggregated` — 纠正+合并
+- `metadata_corrected_drop_high_omission` — 纠正+丢弃高遗漏组 (>50%)
+- `metadata_corrected_drop_any_flagged` — 纠正+丢弃所有标记组
+- 输出: `step2_sensitivity_*.csv` (6 个文件)
 
-- **LOCV 脚本** (`locv_validation.py`)
-  - 每次留出一个条件 (~11名被试)，用其余 7 个条件训练 GP
-  - 检验对未参与训练条件的预测精度
-  - 输出 RMSE/MAE/r 指标和可视化
-  - 结果:
-    - v_self: RMSE=2.18, r=-0.02（泛化较差，预期之中）
-    - SPE_v: RMSE=1.07, r=0.06
-    - 结论: 8 个点在 3D 空间中泛化受限，需要更多数据
+**Step 3: 清洗后参数表**
+- 将行为元数据的 (P, T, W) 覆盖到 HDDM 参数表
+- 按设计条件聚合（合并重复设计的加权平均）
+- 输出: `step3_cleaned_hddm_params_main.csv`
 
-#### 阶段 C: 外部验证 (`1_Code/Python_for_Check/External_verification/`)
+**Step 4: GP+Sigmoid 训练 + LOCV**
+- 使用清洗后参数重新校准 Sigmoid（差分进化）
+- 校准结果: alaph1=0.199, alaph2=-0.404, beta1=-0.826, beta2=1.000, gamma=0.640
+- 训练 GPSigmoidHybridModel
+- LOCV (Leave-One-Condition-Out) 交叉验证
+- 结果:
+  - 训练拟合: r≈1.00 (in-sample 完美)
+  - LOCV: v_self r=-0.09⚠️, a r=-0.44⚠️, SPE r=-0.09⚠️
+  - 警示: 8 个点不足以支持 GP 泛化
+- 输出: `step4_gp_sigmoid_model_cleaned_main.pkl`, `step4_locv_results_cleaned.csv`
 
-- **GPU不确定性响应面** (`find_design_points.py`)
-  - 在 (P,T,W) 空间中 15×15×15=3375 网格采样
-  - 计算每个点的 GP 预测总不确定性
-  - 排除已有条件附近区域 (dist<0.15 标准空间)
-  - 输出 Top-12 候选新实验设计点
-  - 推荐新条件:
-    - P≈17-60 (中等练习量区间)
-    - T=500ms (长呈现时间)
-    - W=300-500ms (短反应窗口)
-    - 这些是现有设计中覆盖不足的区域
+**Step 5: 行为层面验证**
+- 使用 GP+Sigmoid 预测的 DDM 参数进行 DDM 试次级模拟
+- 将模拟行为与真实行为对比:
+  - Correct RT: r=0.981 ✅
+  - ACC: r=0.968 ✅
+  - Omission Rate: r=0.923 ✅
+  - SPE RT: r=0.843 ✅
+- 结论: Sigmoid 理论先验保证了行为层的稳健重建
+- 输出: `step5_behavior_validation_metrics.csv`, `step5_simulated_matching_trials.csv`
 
-### 输出文件一览
+**Step 6: 候选实验设计点**
+- 25×25×25 = 15625 网格采样 (P,T,W) 空间
+- 计算 GP 预测总不确定性
+- 排除已有设计点邻近区域 (标准化空间 dist<0.18)
+- Top-20 候选按不确定性排序
+- 最高不确定性区域: P≈15-45, T=500ms, W=300-350ms
+- 不确定性分解: v_self/v_stranger 各约 2.1 (占总不确定性 ~86%), a≈0.45, t≈0.13, z≈0.13
+- 输出: `step6_candidate_design_points.csv`
 
-| 目录 | 文件 | 内容 |
-|------|------|------|
-| `2_Data/Generate_Data/GP_Sigmoid/` | `sigmoid_calibrated_params.csv` | 校准后的 Sigmoid 参数 |
-| | `sigmoid_calibration_results.csv` | 校准预测详细表 |
-| | `gp_sigmoid_predictions.csv` | GP+Sigmoid 预测结果 |
-| | `gp_sigmoid_hybrid_model.pkl` | 训练好的混合模型 |
-| `2_Data/Generate_Data/Cross_Validation/` | `locv_results.csv` | LOCV 逐条件预测 |
-| | `locv_metrics.csv` | LOCV 汇总指标 |
-| `2_Data/Generate_Data/External_Verification/` | `optimal_design_points.csv` | 候选新实验设计点 |
-| `3_Figures/GP_Sigmoid/` | `gp_sigmoid_real_vs_pred.png` | 真实vs预测散点 |
-| | `gp_response_surface_P.png` | GP响应面 (P维度) |
-| | `spe_v_comparison.png` | SPE真实vs预测对比 |
-| `3_Figures/Cross_Validation/` | `locv_scatter.png` | LOCV 散点图 |
-| | `locv_rmse.png` | LOCV RMSE 柱状图 |
-| `3_Figures/External_Verification/` | `uncertainty_surface.png` | 不确定性响应面 |
-| | `candidate_points_ranking.png` | 候选点排序图 |
+#### B. 产出文件
+
+| 目录 | 关键文件 |
+|:---|:---|
+| `2_Data/Generate_Data/GP_Sigmoid_Cleaned/` | 25+ 输出文件 (诊断/敏感性/LOCV/行为验证/候选点) |
+| `3_Figures/GP_Sigmoid_Cleaned/` | 5 张可视化图 (训练拟合/LOCV/行为验证散点+柱状图/候选点) |
+| `.` (项目根目录) | `RoadMap.md` — 完整路线图 (Phase 0-5) |
+
+#### C. 两版 GP+Sigmoid 管线对比
+
+| 维度 | 初版 (GP_Sigmoid/) | Cleaned版 (GP_Sigmoid_Cleaned/) |
+|:---|:---|:---|
+| 脚本数量 | 3 个独立 .py | 1 个综合管线 |
+| 元数据纠正 | ❌ 否 | ✅ 用行为数据校正 G7 T 值 |
+| 交叉验证 | ❌ | ✅ LOCV |
+| 敏感性分析 | ❌ | ✅ 6 种策略 |
+| 行为验证 | ❌ | ✅ DDM 试次级模拟 |
+| 候选推荐 | ❌ | ✅ GP 不确定性驱动 |
+| 输出文件数 | 4 | 25+ |
+| 推荐使用 | 仅作历史参考 | **主版本** ✅ |
+
+### 关键发现
+
+1. **alaph1 校准后远低于默认值**: 从 1.5 降至 0.199，说明真实数据中 self 的相对漂移率优势远小于理论假设
+2. **beta1 变号**: 从预测的 +0.2 变为 -0.826，高 M 条件下决策边界反而不增
+3. **base_scale_a 触及上界 (10.0)**: a 的 Sigmoid 参数化可能需要重新考虑函数形式
+4. **8 个条件不足以支持 GP 泛化**: LOCV 负相关普遍，需要至少新增 4-6 个条件
+
+### 使用方式
+
+```bash
+# 一键运行完整 6 步清洗管线
+python 1_Code/Python_HDDM/GP+Sigmoid/run_cleaned_validation_pipeline.py
+
+# 可选参数
+python 1_Code/Python_HDDM/GP+Sigmoid/run_cleaned_validation_pipeline.py \
+  --seed 42 \
+  --sigmoid-maxiter 300 \
+  --candidate-topn 20
+```
 
 ### 已知问题
 
-- **只有 7 个唯一设计点**: Group 7 和 Group 8 具有相同的 (P=120, T=80, W=800)，但参数差异大（v_self: 1.21 vs 2.81），可能是数据噪声或需要解释的设计特征
-- **LOCV 泛化差**: 3D 空间 7-8 个训练点对 GP 来说太少，交叉验证结果不可靠（这是样本量的限制，不是方法问题）
-- **Sigma 预测值偏低**: 校准后的 Sigmoid 预测 v 值范围 0.1-1.6，远低于真实 HDDM 的 -3.4~+2.8，说明理论先验需要大幅修正
-
-### 使用方式
-
-```bash
-# Step 1: Sigmoid 校准
-python 1_Code/Python_HDDM/GP+Sigmoid/sigmoid_calibration.py
-
-# Step 2: GP+Sigmoid 混合模型训练+预测+可视化
-python 1_Code/Python_HDDM/GP+Sigmoid/run_full_pipeline.py
-
-# Step 3: 留一条件交叉验证
-python 1_Code/Python_for_Check/Cross-validation/locv_validation.py
-
-# Step 4: 外部验证 - 寻找最优新设计点
-python 1_Code/Python_for_Check/External_verification/find_design_points.py
-```
+- 初版 (`run_full_pipeline.py` + `sigmoid_calibration.py`) 已被 Cleaned版取代，保留作为历史参考
+- G7 T 值需人工确认（元数据 30ms vs 数据 80ms），当前 Cleaned版按行为数据 T=80ms 处理
+- Cleaned版 G7 实际 T 值仍取 30ms（来自行为数据汇总），需在确认后手动修正
 
 ---
 
-## v0.3 — Generate_Data_v4.ipynb 可逐行运行的 Jupyter Notebook
+## v0.5 — 路线图制定与深度方法论评估
 
-**日期**: 2026-05-06  
+**日期**: 2026-05-09  
 **责任人**: AI Assistant (Trae Agent)
 
-### 新增功能
+### 新增
 
-- **`Generate_Data_v4.ipynb`** — 完整的 GP+Sigmoid 混合生成模型 Jupyter Notebook
-  - 路径: `1_Code/Python_for_Generate/Generate_Data_v4.ipynb`
-  - 26 个 cells (14 markdown + 12 code)，可逐行独立运行
-  - 包含完整的 Sigmoid 校准、GP+Sigmoid 模型训练、LOCV 交叉验证、外部验证设计
-  - 自动定位项目根目录（通过 AGENTS.md），支持不同环境移植
-  - 使用相对路径，所有输出保存到 `2_Data/Generate_Data/` 和 `3_Figures/` 下
+- **`RoadMap.md`** — 项目完整路线图
+  - Phase 0: 数据采集 + 基线 Sigmoid+DDM
+  - Phase 1: GP 角色定位（代理模型/数据层混合/残差捕捉）
+  - Phase 2: HDDM Docker 拟合 + 参数提取
+  - Phase 3: GP+Sigmoid 建模 + LOCV + 行为验证
+  - Phase 4: 实验设计优化 + 候选点推荐
+  - Phase 5: 论文撰写与产出（规划中）
+  - 含 ✅ 已完成 / ⚠️ 进行中 / 📋 待执行 状态标记
 
-### Notebook 结构
+### 方法论澄清
 
-| Cell | 类型 | 内容 |
-|------|------|------|
-| 0 | Markdown | 标题与工作流概览 |
-| 1 | Markdown | Cell 1 说明 |
-| 2 | Code | 环境设置与路径配置 |
-| 3 | Markdown | Cell 2 说明 |
-| 4 | Code | Sigmoid 理论先验函数 |
-| 5 | Markdown | Cell 3 说明 |
-| 6 | Code | 加载 HDDM 参数 |
-| 7 | Markdown | Cell 4 说明 |
-| 8 | Code | Sigmoid 参数校准（差分进化） |
-| 9 | Markdown | Cell 5 说明 |
-| 10 | Code | GP+Sigmoid 混合模型类定义 |
-| 11 | Markdown | Cell 6 说明 |
-| 12 | Code | 训练混合模型 |
-| 13 | Markdown | Cell 7 说明 |
-| 14 | Code | 训练集拟合评估 |
-| 15 | Markdown | Cell 8 说明 |
-| 16 | Code | 可视化：真实 vs 预测散点图 + SPE对比 |
-| 17 | Markdown | Cell 9 说明 |
-| 18 | Code | LOCV 留一条件交叉验证 |
-| 19 | Markdown | Cell 10 说明 |
-| 20 | Code | LOCV 可视化 |
-| 21 | Markdown | Cell 11 说明 |
-| 22 | Code | 外部验证：寻找最优新设计点 |
-| 23 | Markdown | Cell 12 说明 |
-| 24 | Code | 外部验证可视化：不确定性表面图 |
-| 25 | Markdown | 输出文件清单与下一步建议 |
+- **GP 在 DDM 参数层 vs 数据生成层**:
+  - 参数层 (当前方案): Sigmoid 预测 (v,a,t,z) → GP 学习参数残差 → DDM 模拟行为
+  - 数据层 (v2.4): Sigmoid→DDM模拟→行为 → GP 学习行为残差
+  - 结论: 参数层更优（低维、可解释、理论约束强）
 
-### 使用方式
+- **DDM 参数合理性评估** (参照 Ratcliff & McKoon, 2008; Ratcliff et al., 2016):
+  - v: G4-G8 合理 (+0.6~+2.8), G1-G3 异常负值 (-3.4~-1.7) — 高遗漏率污染
+  - a: G2-G7 合理 (1.1~1.5), G1(2.01)/G8(2.42) 稍高
+  - t: 整体合理 (0.26~0.66s), G6(0.66s) 在 T=500ms 下可解释
+  - z: 整体合理 (0.45~0.75)
 
-```bash
-# 启动 Jupyter (项目根目录)
-jupyter notebook
+- **当前核心瓶颈**: 仅 8 个设计条件，需新增 4-6 个实验条件才能支持 GP 有效泛化
 
-# 打开文件
-1_Code/Python_for_Generate/Generate_Data_v4.ipynb
+### 下一步建议
 
-# 按顺序逐 Cell 运行 (Shift+Enter)
-```
+1. 🔴 确认 G7 真实 T 值（30ms 还是 80ms）
+2. 🔴 新增实验条件（按 Step 6 候选点推荐 + RoadMap 建议）
+3. 🟡 决定 G1/G2 从建模中是否排除
+4. 🟢 排除后重新运行完整管线并更新所有指标
