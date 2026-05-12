@@ -210,3 +210,46 @@ python 1_Code/Python_HDDM/GP+Sigmoid/run_cleaned_validation_pipeline.py \
 2. 🔴 新增实验条件（按 Step 6 候选点推荐 + RoadMap 建议）
 3. 🟡 决定 G1/G2 从建模中是否排除
 4. 🟢 排除后重新运行完整管线并更新所有指标
+
+---
+
+## v0.6 — RoadMap 参数表完善 + Sigmoid 优化方法论澄清 + Docker Notebook 整合
+
+**日期**: 2026-05-09  
+**责任人**: AI Assistant (Trae Agent)
+
+### 新增
+
+#### A. RoadMap.md Phase 0.4: Sigmoid 参数全表与可优化性分析
+
+- 列出 Sigmoid 生成模型的**所有参数**：
+  - **6 个显式参数**: alaph1, alaph2, beta1, beta2, gamma, t0
+  - **10 个隐性/硬编码参数**: T_0, k_T, M_0, k_a, P1, k_min, k_max, P0, base_scale_v, base_scale_a
+- 可优化性分类：✅ 已优化（7个）/ 🟡 可选未做（8个）/ ❌ 不应优化（1个）
+
+#### B. RoadMap.md Phase 3.6: 关键发现与参数解读
+
+- **3.6.1 Sigmoid 校准参数解读**：逐参数解释校准结果的心理/方法论含义
+  - alaph1=0.199（远低于默认 1.5）：self 的相对优势仅 20% 而非 150%
+  - beta1=-0.826（方向反转）：高 M 条件下边界反而降低
+  - base_scale_a=10.0（触及上界）：Sigmoid 无法产生足够大的 a 值
+- **3.6.2 需要解决的模型问题**：6 个问题按严重程度排列
+- **3.6.3 行为层面验证积极信号**：RT r=0.981, ACC r=0.968, 遗漏率 r=0.923, SPE r=0.843
+
+#### C. Docker_Run.ipynb 整合优化
+
+- 将 `HDDM_Ready_Workflow.ipynb` 的 **Step 1 数据预处理** 整合至 `Docker_Run.ipynb`
+  - 原始数据路径：`UnExtact/raw/`（Docker 挂载后直接可访问）
+  - 预处理逻辑：过滤 Matching 试次 → 标记遗漏 → 输出 HDDM 就绪 CSV
+  - 支持跳过（若 `HDDM_Ready/` 下已有文件）
+- 更新工作流步骤表，所有步骤统一在 Docker 内完成
+- 更新输出文件清单，加入 Step 1 产物
+
+### 删除
+
+- ❌ **`HDDM_Ready_Workflow.ipynb`** — 已被 `Docker_Run.ipynb`（整合版）完全取代
+  - 删除原因：仅用于规划阶段，Step 2 在 Docker 外无法运行（PermissionError），实际运行的是 `Docker_Run.ipynb`
+
+### 关键澄清
+
+- **base_scale_v 和 base_scale_a 的来源**：这两个参数在原始 S2 代码中**确实存在**，只是以隐式方式出现（直接写 `* 3`）。校准代码将它们提取为显式可调参数。用户之前的疑问"原始 Sigmoid 中没有看到"是因为它们是硬编码的魔法数字，而非有名字的变量。
