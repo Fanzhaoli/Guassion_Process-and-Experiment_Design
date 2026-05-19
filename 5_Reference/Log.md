@@ -253,3 +253,103 @@ python 1_Code/Python_HDDM/GP+Sigmoid/run_cleaned_validation_pipeline.py \
 ### 关键澄清
 
 - **base_scale_v 和 base_scale_a 的来源**：这两个参数在原始 S2 代码中**确实存在**，只是以隐式方式出现（直接写 `* 3`）。校准代码将它们提取为显式可调参数。用户之前的疑问"原始 Sigmoid 中没有看到"是因为它们是硬编码的魔法数字，而非有名字的变量。
+
+---
+
+## v0.7 — v9 Sigmoid 系统性优化 (5 策略差分进化 + 全参数校准)
+
+**日期**: 2026-05-17  
+**责任人**: AI Assistant (Trae Agent)
+
+### 新增功能
+
+#### A. v9_Sigmoid_Optimization.ipynb — 系统性优化 Notebook
+
+- **路径**: `1_Code/Python_for_Check/Sigmoid_Optimized/v9_Sigmoid_Optimization.ipynb`
+- **设计目标**: 基于 RoadMap 0.4 参数全表，对 Sigmoid 生成的 **16 个参数（6 显式 + 10 隐式）** 进行系统性优化
+- **与 v3-v8 的关键区别**:
+  - v3-v8 是试次级 DDM 模拟器（随机 P,T,W → DDM 模拟 → RT 分布检查）
+  - v9 是参数级校准器（真实 HDDM 参数 → Sigmoid 函数优化 → 行为验证）
+  - v9 与 `sigmoid_calibration.py` 对齐方法论，但扩展了参数范围和优化策略
+
+#### B. 5 策略系统性优化
+
+| 策略 | 方法 | N数据 | N参数 | 关键结果 |
+|:---|:---|:---:|:---:|:---|
+| **S1** | Cleaned 基线复现 (8组, a_bound=10) | 8 | 7 | RMSE_v=1.95, RMSE_a=0.47, base_scale_a=10.0 (触界) |
+| **S2** | 扩展边界 (a_bound→25) | 8 | 7 | RMSE_a=0.39, base_scale_a=22.06, base_scale_v=0.79 |
+| **S3** | 排除高遗漏 G1,G2 (6组) | 6 | 7 | RMSE_v_self=1.36, rho_SPE_v=-0.12 (不良) |
+| **S4** | 加权多目标 (w_v=0.4, w_spe=0.4, w_a=0.2) | 8 | 7 | 与 S2 结果相近，未显著改善 SPE 匹配 |
+| **S5** | 全参数优化 (11参数, 含T_0/k_T/M_0/k_a) | 6 | 11 | **RMSE_v_self=1.12, RMSE_v_stranger=1.09 (最优)** |
+
+#### C. 最优参数 (S5, 排除 G1,G2)
+
+| 参数 | 默认值 | Cleaned(RoadMap) | v9最优(S5) | 方向 |
+|:---|:---:|:---:|:---:|:---:|
+| alaph1 | 1.50 | 0.199 | **1.112** | ↓ |
+| alaph2 | -0.40 | -0.404 | **0.401** | ↑ (变号) |
+| beta1 | 0.20 | -0.826 | **-0.434** | ↓ |
+| beta2 | 0.00 | 1.000 | **0.281** | ↑ |
+| gamma | 0.20 | 0.640 | **0.438** | ↑ |
+| base_scale_v | 3.00 | 1.326 | **0.946** | ↓ |
+| base_scale_a | 3.00 | 10.000 | **2.806** | ↓ |
+| T_0 | 100 | 100(默认) | **63.7** | ↓ |
+| k_T | 0.01 | 0.01(默认) | **0.100** | ↑ |
+| M_0 | 600 | 600(默认) | **565.4** | ≈ |
+| k_a | 0.01 | 0.01(默认) | **0.018** | ↑ |
+
+#### D. 可视化产出 (5 张图表)
+
+- `v9_prediction_vs_actual_scatter.png` — DDM 参数预测 vs 真实值散点图 (含 RMSE/r/ρ)
+- `v9_residual_analysis.png` — 各条件参数残差柱状图
+- `v9_strategy_parameter_comparison.png` — 5 策略间核心参数对比
+- `v9_condition_level_comparison.png` — 条件级别折线图 (按 M_ms 排序)
+- `v9_strategy_metrics_comparison.png` — 策略间 RMSE/Spearman ρ 对比
+
+#### E. 数据产出
+
+| 文件 | 内容 |
+|:---|:---|
+| `strategy_comparison_v9.csv` | 5 策略完整对比表 |
+| `best_predictions_v9.csv` | 最优策略 (S5) 对各条件的预测 + 残差 |
+| `best_params_v9.csv` | 最优参数表 |
+| `parameter_comparison_before_after_v9.csv` | 默认/Cleaned/v9 三版参数对比 |
+| `v9_final_report.txt` | 完整性能评估报告 |
+
+### 关键发现
+
+1. **Sigmoid 模型无法产生负 v 值（结构局限）**:
+   - 所有 Sigmoid 组件 (v_T, v_P, a_0) 输出 ∈ [0,1]
+   - 乘法组合 + 正缩放因子 → v 永远 ≥ 0
+   - G1, G2, G4 的真实 HDDM v 为负值，Sigmoid 完全无法匹配
+   - G1: HDDM=-3.39, Sigmoid=0.027 → 残差=-3.41
+
+2. **alaph2 变号（-0.4 → +0.401）**:
+   - v9 最优解中 stranger 反而获得 v 增强（！）
+   - 这是因为模型需要 alaph1 >> alaph2 来产生 SPE_v，而非通过 alaph2 < 0
+   - 这与原始设计意图（alaph2 为负以削弱 stranger）不一致
+
+3. **base_scale_a 不再触界**: 通过 S5 的全参数优化（包含 M_0, k_a），base_scale_a 降至 2.81，无需极大值
+
+4. **T_0 下移至 63.7ms**（默认 100ms）: T→v 的 Sigmoid 中点左移，说明在更短的 T 下即可达到半激活
+
+5. **k_T 增至 0.1**（默认 0.01）: T→v 的陡峭度增加 10 倍，T 对 v 的影响更加敏感
+
+6. **排除 G1,G2 对结果影响显著**: S3 (6组) 的 rho_SPE_v 反而变负 (-0.12)，说明剩余 6 组的 SPE_v 变化模式更复杂
+
+### 使用方式
+
+```bash
+# 运行独立优化脚本 (生成所有结果文件)
+python 1_Code/Python_for_Check/Sigmoid_Optimized/run_v9_optimization.py
+
+# 或在 Jupyter 中打开 notebook 逐 Cell 运行
+jupyter notebook 1_Code/Python_for_Check/Sigmoid_Optimized/v9_Sigmoid_Optimization.ipynb
+```
+
+### 已知局限
+
+- 差分进化未完全收敛 (所有策略 `Converged: False`)，提高 maxiter 可进一步优化
+- Sigmoid 无法产生负 v 值是结构性局限，可能需要重新参数化（如引入偏移项）
+- 仅 6-8 个数据点校准 7-11 个参数，过参数化风险高
+- S5 的 alaph2 变号为正值，需从理论角度评估其合理性
