@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高斯过程实验设计 - 数据可视化分析平台</title>
+<script src="chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ===== 暗色主题 (默认) ===== */
+:root {
+  --bg-primary: #0f1923;
+  --bg-secondary: #1a2a3a;
+  --bg-tertiary: #132030;
+  --bg-card: #0d1b2a;
+  --text-primary: #e0e0e0;
+  --text-secondary: #90a4ae;
+  --accent: #64b5f6;
+  --border: #2a4a6a;
+  --border-light: #3a5a7a;
+  --button-bg: #2a5a8a;
+  --button-hover: #3a6a9a;
+  --chart-grid: rgba(255,255,255,0.05);
+  --chart-text: #90a4ae;
+  --toast-info-bg: #1a3a5a;
+  --toast-error-bg: #5a1a1a;
+}
+
+/* ===== 亮色主题 ===== */
+[data-theme="light"] {
+  --bg-primary: #f5f7fa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #eef2f7;
+  --bg-card: #ffffff;
+  --text-primary: #2c3e50;
+  --text-secondary: #5a6c7d;
+  --accent: #1976d2;
+  --border: #d0d7de;
+  --border-light: #b4bcc3;
+  --button-bg: #1976d2;
+  --button-hover: #1565c0;
+  --chart-grid: rgba(0,0,0,0.08);
+  --chart-text: #5a6c7d;
+  --toast-info-bg: #e3f2fd;
+  --toast-error-bg: #ffebee;
+}
+
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; transition: background 0.3s, color 0.3s; }
+.header { background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary)); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--border); }
+.header h1 { font-size: 1.4em; color: var(--accent); font-weight: 600; }
+.header .subtitle { font-size: 0.8em; color: var(--text-secondary); }
+.tab-nav { display: flex; background: var(--bg-secondary); border-bottom: 2px solid var(--border); padding: 0 16px; flex-wrap: wrap; }
+.tab-btn { padding: 12px 24px; cursor: pointer; border: none; background: transparent; color: var(--text-secondary); font-size: 0.9em; transition: all 0.25s; border-bottom: 3px solid transparent; font-weight: 500; }
+.tab-btn:hover { color: var(--accent); background: rgba(100,181,246,0.05); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.main-content { display: flex; height: calc(100vh - 110px); }
+.panel { flex: 1; padding: 16px; overflow-y: auto; }
+.panel-left { max-width: 360px; min-width: 300px; border-right: 1px solid var(--border); background: var(--bg-tertiary); }
+.panel-right { flex: 2; display: flex; flex-direction: column; }
+.viz-area { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.chart-container { background: var(--bg-secondary); border-radius: 8px; padding: 12px; border: 1px solid var(--border); position: relative; }
+.chart-container canvas { max-height: 350px; }
+.section-title { font-size: 1em; color: var(--accent); margin-bottom: 10px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.section-title::before { content: ''; width: 4px; height: 18px; background: var(--accent); border-radius: 2px; }
+.data-preview { max-height: 300px; overflow-y: auto; background: var(--bg-card); border-radius: 6px; border: 1px solid var(--border); }
+.data-preview table { width: 100%; border-collapse: collapse; font-size: 0.78em; }
+.data-preview th { position: sticky; top: 0; background: var(--bg-secondary); padding: 6px 8px; text-align: left; color: var(--accent); border-bottom: 2px solid var(--border); }
+.data-preview td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.data-preview tr:hover { background: rgba(100,181,246,0.05); }
+select, input, button { background: var(--bg-secondary); border: 1px solid var(--border-light); color: var(--text-primary); padding: 6px 12px; border-radius: 4px; font-size: 0.85em; cursor: pointer; transition: all 0.2s; }
+select:focus, input:focus { outline: none; border-color: var(--accent); }
+button { background: var(--button-bg); border-color: var(--button-bg); color: #fff; }
+button:hover { background: var(--button-hover); border-color: var(--button-hover); }
+button.active-btn { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { background: #d32f2f; border-color: #d32f2f; }
+.file-list { max-height: 280px; overflow-y: auto; }
+.file-item { padding: 8px 10px; cursor: pointer; border-radius: 4px; margin: 2px 0; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; font-size: 0.82em; }
+.file-item:hover { background: rgba(100,181,246,0.1); }
+.file-item.selected { background: rgba(100,181,246,0.2); border: 1px solid var(--accent); }
+.file-item .badge { font-size: 0.75em; padding: 2px 8px; border-radius: 10px; }
+.badge-matching { background: rgba(76,175,80,0.2); color: #4caf50; }
+.badge-nonmatching { background: rgba(244,67,54,0.2); color: #f44336; }
+.badge-self { background: rgba(255,152,0,0.2); color: #ff9800; }
+.badge-stranger { background: rgba(33,150,243,0.2); color: #2196f3; }
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.stat-card { background: var(--bg-card); padding: 10px; border-radius: 6px; text-align: center; border: 1px solid var(--border); }
+.stat-card .value { font-size: 1.4em; font-weight: 700; color: var(--accent); }
+.stat-card .label { font-size: 0.7em; color: var(--text-secondary); margin-top: 2px; }
+.filter-row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; align-items: center; }
+.filter-row label { font-size: 0.8em; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.filter-row input[type="checkbox"] { accent-color: var(--accent); }
+.legend-row { display: flex; gap: 16px; margin: 8px 0; font-size: 0.8em; }
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+.sim-display { background: var(--bg-card); border-radius: 8px; padding: 16px; text-align: center; border: 1px solid var(--border); }
+.sim-shape { width: 80px; height: 80px; margin: 0 auto 10px; border: 3px solid var(--accent); }
+.sim-square { border-radius: 4px; }
+.sim-circle { border-radius: 50%; }
+.sim-label { font-size: 1.8em; color: #ff9800; margin: 8px 0; }
+.sim-result { font-size: 1em; padding: 8px 16px; border-radius: 20px; display: inline-block; margin-top: 8px; }
+.sim-result.match { background: rgba(76,175,80,0.2); color: #4caf50; }
+.sim-result.nonmatch { background: rgba(244,67,54,0.2); color: #f44336; }
+.group-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.group-tab { padding: 4px 10px; font-size: 0.75em; border-radius: 12px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); transition: all 0.2s; }
+.group-tab:hover { border-color: var(--accent); color: var(--accent); }
+.group-tab.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+.crf-mode-btn { padding: 4px 12px; font-size: 0.78em; border-radius: 4px; cursor: pointer; border: 1px solid var(--border-light); background: transparent; color: var(--text-secondary); transition: all 0.2s; }
+.crf-mode-btn:hover { border-color: var(--accent); color: var(--accent); }
+.crf-mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.crf-filter-chip { transition: all 0.15s ease; user-select: none; }
+.hidden { display: none !important; }
+.src-step { margin: 12px 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.src-step-header { padding: 6px 12px; font-size: 0.82em; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.src-step-header:hover { opacity: 0.85; }
+.src-step-num { width: 22px; height: 22px; border-radius: 50%; text-align: center; line-height: 22px; font-size: 0.75em; color: #fff; flex-shrink: 0; }
+.src-code-block { margin: 0; padding: 10px 14px; font-family: 'Consolas','Courier New',monospace; font-size: 0.7em; line-height: 1.55; white-space: pre-wrap; overflow-x: auto; background: var(--bg-card); border-top: 1px solid var(--border); max-height: 300px; overflow-y: auto; }
+.src-code-block .kw { color: #c586c0; }
+.src-code-block .str { color: #ce9178; }
+.src-code-block .cm { color: #6a9955; }
+.src-code-block .fn { color: #dcdcaa; }
+.src-code-block .num { color: #b5cea8; }
+.pipeline-flow { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 10px 0; font-size: 0.72em; color: var(--text-secondary); }
+.pipeline-step { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; white-space: nowrap; font-family: 'Consolas',monospace; font-size: 0.95em; }
+.tooltip-info { font-size: 0.75em; color: var(--text-secondary); margin-top: 4px; }
+.slider-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.slider-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+.slider-row span { font-size: 0.8em; color: var(--accent); min-width: 30px; text-align: right; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-card); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+.toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; font-size: 0.85em; z-index: 1000; animation: slideIn 0.3s ease; }
+.toast.info { background: var(--toast-info-bg); color: var(--accent); border: 1px solid var(--accent); }
+.toast.error { background: var(--toast-error-bg); color: #d32f2f; border: 1px solid #d32f2f; }
+@keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* 主题切换按钮 */
+.theme-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border); transition: all 0.2s; }
+.theme-toggle:hover { border-color: var(--accent); }
+.theme-toggle svg { width: 18px; height: 18px; fill: var(--accent); }
+.theme-toggle span { font-size: 0.8em; color: var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>高斯过程实验设计 - 数据可视化分析平台</h1>
+    <div class="subtitle">Shape-Label Association Task | Matching/NonMatching DDM Analysis</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <select id="globalGroupFilter" style="min-width:120px;">
+      <option value="all">所有组别</option>
+    </select>
+    <span style="font-size:0.8em;color:var(--text-secondary);" id="globalStatus">未连接</span>
+    <div class="theme-toggle" id="themeToggle" title="切换主题">
+      <svg id="themeIcon" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+      <span id="themeText">亮色</span>
+    </div>
+  </div>
+</div>
+
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="tab-experiment">实验按键逻辑模拟</button>
+  <button class="tab-btn" data-tab="tab-data">数据选择与浏览</button>
+  <button class="tab-btn" data-tab="tab-visualization">交互式CRF可视化</button>
+  <button class="tab-btn" data-tab="tab-design">设计空间分析</button>
+</div>
+
+<div class="main-content">
+  <div class="panel panel-left" id="leftPanel"></div>
+  <div class="panel panel-right" id="rightPanel">
+    <div class="viz-area" id="vizArea"></div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+
+let appState = {
+  currentTab: 'tab-experiment',
+  allFiles: [],
+  selectedFile: null,
+  currentData: null,
+  allData: null,
+  activeFilters: { matching: true, nonMatching: true, self: true, stranger: true, correctOnly: false },
+  quantileN: 5,
+  selectedGroups: new Set([1,2,3,4,5,6,7,8]),
+  theme: 'dark',
+};
+
+// 主题切换功能
+function initTheme() {
+  const savedTheme = localStorage.getItem('viz-theme') || 'dark';
+  setTheme(savedTheme);
+  document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+}
+
+function setTheme(theme) {
+  appState.theme = theme;
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.getElementById('themeText').textContent = '暗色';
+    document.getElementById('themeIcon').innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    document.getElementById('themeText').textContent = '亮色';
+    document.getElementById('themeIcon').innerHTML = '<path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>';
+  }
+  localStorage.setItem('viz-theme', theme);
+  updateChartTheme();
+}
+
+function toggleTheme() {
+  const newTheme = appState.theme === 'dark' ? 'light' : 'dark';
+  setTheme(newTheme);
+}
+
+function updateChartTheme() {
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  
+  [rtChart, crfChartInst, speChartInst, designBubbleInst, designQualityInst, designSensitivityInst].forEach(chart => {
+    if (chart && chart.options) {
+      if (chart.options.scales) {
+        Object.values(chart.options.scales).forEach(scale => {
+          if (scale.title) scale.title.color = textColor;
+          if (scale.ticks) scale.ticks.color = textColor;
+          if (scale.grid) scale.grid.color = gridColor;
+        });
+      }
+      if (chart.options.plugins && chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+        chart.options.plugins.legend.labels.color = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+      }
+      if (chart.options.plugins && chart.options.plugins.title) {
+        chart.options.plugins.title.color = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+      }
+      chart.update('none');
+    }
+  });
+}
+
+async function fetchAPI(path) {
+  try {
+    const res = await fetch(`${API}${path}`);
+    document.getElementById('globalStatus').textContent = '已连接';
+    document.getElementById('globalStatus').style.color = '#4caf50';
+    return await res.json();
+  } catch(e) {
+    document.getElementById('globalStatus').textContent = '服务器离线';
+    document.getElementById('globalStatus').style.color = '#f44336';
+    showToast('无法连接服务器，请先运行 app_server.py', 'error');
+    throw e;
+  }
+}
+
+function showToast(msg, type='info') {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function generateGroupOptions() {
+  const sel = document.getElementById('globalGroupFilter');
+  const groupTabs = document.querySelector('.group-tabs');
+  [1,2,3,4,5,6,7,8].forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g;
+    const labels = {1:'G1 exclude',2:'G2 exclude',3:'G3 caution',4:'G4 good',5:'G5 good',6:'G6 good',7:'G7 good',8:'G8 good'};
+    opt.textContent = labels[g];
+    sel.appendChild(opt);
+  });
+}
+
+function initTabs() {
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      appState.currentTab = b.dataset.tab;
+      renderTabContent();
+    });
+  });
+}
+
+function renderTabContent() {
+  const lp = document.getElementById('leftPanel');
+  const rp = document.getElementById('vizArea');
+  switch(appState.currentTab) {
+    case 'tab-experiment': renderExperimentTab(lp, rp); break;
+    case 'tab-data': renderDataTab(lp, rp); break;
+    case 'tab-visualization': renderVisualizationTab(lp, rp); break;
+    case 'tab-design': renderDesignTab(lp, rp); break;
+  }
+}
+
+// ==================== TAB 1: EXPERIMENT SIMULATOR ====================
+function renderExperimentTab(lp, rp) {
+  lp.innerHTML = `
+    <div class="section-title">实验参数配置</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div><label style="font-size:0.8em;color:var(--text-secondary);">被试编号 (Subject ID)</label>
+        <input type="number" id="simSubjectID" value="1" min="1" style="width:100%;"></div>
+      <div><label style="font-size:0.8em;color:var(--text-secondary);">组别 (Group ID)</label>
+        <select id="simGroupID" style="width:100%;">
+          ${[1,2,3,4,5,6,7,8].map(g => `<option value="${g}">G${g}</option>`).join('')}
+        </select></div>
+      <button id="btnSimParams">查询实验参数</button>
+    </div>
+    <div id="simParamsResult" style="margin-top:12px;font-size:0.82em;"></div>
+    <div class="section-title" style="margin-top:16px;">试次模拟</div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="simTrial('square','self')" class="active-btn" style="flex:1;">□ + Self</button>
+      <button onclick="simTrial('square','stranger')" style="flex:1;">□ + Stranger</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button onclick="simTrial('circle','self')" style="flex:1;">○ + Self</button>
+      <button onclick="simTrial('circle','stranger')" style="flex:1;">○ + Stranger</button>
+    </div>
+    <div class="section-title" style="margin-top:16px;">数据自查</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <select id="verifyFileSelect" style="width:100%;">
+        <option value="">-- 选择数据文件进行校验 --</option>
+      </select>
+      <div style="display:flex;gap:8px;">
+        <button id="btnVerifyFile" style="flex:1;">校验当前文件</button>
+        <button id="btnVerifyAll" style="flex:1;" class="danger">批量校验全部文件</button>
+      </div>
+    </div>
+    <div id="verifyStatus" style="font-size:0.75em;color:var(--text-secondary);margin-top:8px;"></div>
+    <div class="section-title" style="margin-top:16px;">按键映射规则</div>
+    <div id="keyMappingRules" style="font-size:0.82em;background:var(--bg-card);padding:12px;border-radius:6px;line-height:1.8;"></div>
+  `;
+  rp.innerHTML = `
+    <div class="chart-container" style="text-align:center;">
+      <div class="section-title">试次模拟显示</div>
+      <div class="sim-display" id="simDisplay">
+        <div id="simShape" class="sim-shape sim-square"></div>
+        <div class="sim-label" id="simLabel">Self</div>
+        <div style="color:var(--text-secondary);">请点击左侧按钮模拟试次</div>
+        <div id="simFeedback" style="margin-top:10px;"></div>
+      </div>
+    </div>
+    <div class="chart-container">
+      <div class="section-title">4试次循环逻辑说明</div>
+      <div id="cycleExplanation" style="font-size:0.82em;line-height:1.8;"></div>
+    </div>
+    <div class="chart-container" id="verifyResultContainer" style="display:none;">
+      <div class="section-title" id="verifyResultTitle">数据自查结果</div>
+      <div id="verifyResultSummary" style="margin-bottom:12px;"></div>
+      <div class="data-preview" id="verifyErrorList" style="max-height:350px;">
+        <div style="padding:16px;text-align:center;color:var(--text-secondary);">等待校验...</div>
+      </div>
+    </div>
+  `;
+  document.getElementById('btnSimParams').addEventListener('click', queryExperimentParams);
+  document.getElementById('simSubjectID').addEventListener('change', queryExperimentParams);
+  document.getElementById('btnVerifyFile').addEventListener('click', () => doVerifyFile(false));
+  document.getElementById('btnVerifyAll').addEventListener('click', () => doVerifyFile(true));
+  populateVerifyFileSelect();
+  queryExperimentParams();
+}
+
+async function queryExperimentParams() {
+  const sid = document.getElementById('simSubjectID').value;
+  const gid = document.getElementById('simGroupID').value;
+  const data = await fetchAPI(`/api/experiment/params?subject=${sid}&group=${gid}`);
+  const cond = {1:[0,0.03,0.3],2:[0,0.03,0.6],3:[120,0.03,0.6],4:[120,0.08,0.6],5:[8,0.1,1.1],6:[120,0.5,1.5],7:[0,0.1,1.1],8:[120,0.03,0.8]}[gid] || [null,null,null];
+  const html = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <div class="stat-card"><div class="value">${data.matchKey.toUpperCase()}</div><div class="label">匹配键 (Match)</div></div>
+      <div class="stat-card"><div class="value">${data.mismatchKey.toUpperCase()}</div><div class="label">不匹配键 (Mismatch)</div></div>
+      <div class="stat-card"><div class="value">${cond[0]}</div><div class="label">练习试次 P</div></div>
+      <div class="stat-card"><div class="value">${cond[1]}s</div><div class="label">刺激呈现 T</div></div>
+      <div class="stat-card"><div class="value">${cond[2]}s</div><div class="label">反应窗口 W</div></div>
+      <div class="stat-card"><div class="value">${data.subjectID}</div><div class="label">mod 4 = ${data.subjectID%4}</div></div>
+    </div>
+    <div style="margin-top:8px;font-size:0.8em;">
+      正确配对: <b>${data.correctOrder.square=='self'?'□↔Self, ○↔Stranger':'□↔Stranger, ○↔Self'}</b>
+    </div>
+  `;
+  document.getElementById('simParamsResult').innerHTML = html;
+  updateKeyMappingRules(data.subjectID);
+  updateCycleExplanation(data.subjectID);
+}
+
+async function simTrial(shape, label) {
+  const sid = document.getElementById('simSubjectID').value;
+  const data = await fetchAPI(`/api/experiment/trial?subject=${sid}&shape=${shape}&label=${label}`);
+  document.getElementById('simShape').className = `sim-shape sim-${shape}`;
+  document.getElementById('simLabel').textContent = label === 'self' ? '自我 (Self)' : '生人 (Stranger)';
+  const isMatch = data.condition === 'Matching';
+  document.getElementById('simFeedback').innerHTML = `
+    <div class="sim-result ${isMatch?'match':'nonmatch'}">${data.condition} → 正确按键: <b>${data.correctKey.toUpperCase()}</b> (${data.matchKey.toUpperCase()}=匹配, ${data.mismatchKey.toUpperCase()}=不匹配)</div>
+  `;
+}
+
+function updateKeyMappingRules(sid) {
+  const mod = sid % 4;
+  const co = sid % 2 === 0 ? '□↔Self, ○↔Stranger' : '□↔Stranger, ○↔Self';
+  const mk = ['f','j','j','f'][(sid-1)%4];
+  const rules = {
+    0: {sq_s:'F', sq_st:'J', ci_s:'J', ci_st:'F'},
+    1: {sq_s:'J', sq_st:'F', ci_s:'F', ci_st:'J'},
+    2: {sq_s:'J', sq_st:'F', ci_s:'F', ci_st:'J'},
+    3: {sq_s:'F', sq_st:'J', ci_s:'J', ci_st:'F'},
+  }[mod];
+  document.getElementById('keyMappingRules').innerHTML = `
+    <div><b>被试${sid}</b> (mod 4 = ${mod}) | 正确配对: <b>${co}</b></div>
+    <div style="margin-top:6px;">
+      <table style="width:100%;font-size:0.9em;border-collapse:collapse;">
+        <tr><th style="text-align:left;padding:4px;">形状-标签</th><th style="text-align:center;">正确键</th><th style="text-align:center;">条件</th></tr>
+        <tr><td style="padding:4px;">□ + Self</td><td style="text-align:center;color:#64b5f6;">${rules.sq_s}</td><td style="text-align:center;">${co.includes('Self')&&co.includes('□')?'Matching':'NonMatching'}</td></tr>
+        <tr><td style="padding:4px;">□ + Stranger</td><td style="text-align:center;color:#64b5f6;">${rules.sq_st}</td><td style="text-align:center;">${co.includes('Stranger')&&co.includes('□')?'Matching':'NonMatching'}</td></tr>
+        <tr><td style="padding:4px;">○ + Self</td><td style="text-align:center;color:#64b5f6;">${rules.ci_s}</td><td style="text-align:center;">${co.includes('Self')&&co.includes('○')?'Matching':'NonMatching'}</td></tr>
+        <tr><td style="padding:4px;">○ + Stranger</td><td style="text-align:center;color:#64b5f6;">${rules.ci_st}</td><td style="text-align:center;">${co.includes('Stranger')&&co.includes('○')?'Matching':'NonMatching'}</td></tr>
+      </table>
+    </div>
+    <div style="margin-top:6px;">匹配键: <b style="color:#4caf50;">${mk.toUpperCase()}</b> | 不匹配键: <b style="color:#f44336;">${mk==='f'?'J':'F'}</b></div>
+  `;
+}
+
+function updateCycleExplanation(sid) {
+  const mod = sid % 4;
+  const mk = ['f','j','j','f'][(sid-1)%4];
+  document.getElementById('cycleExplanation').innerHTML = `
+    <div><b>4试次循环 ({f, j, j, f})</b>: 当前被试${sid}, 位置${(sid-1)%4+1}/4, 匹配键=<b>${mk.toUpperCase()}</b></div>
+    <div style="margin-top:6px;color:#90a4ae;">
+      被试编号 mod 4 决定按键映射规则，形成4种被试间模式：
+      <br>• mod=0 (4的倍数): F=匹配, J=不匹配 | □↔Self/○↔Stranger
+      <br>• mod=1 (4k+1): F=匹配, J=不匹配 | □↔Stranger/○↔Self
+      <br>• mod=2 (其他偶数): J=匹配, F=不匹配 | □↔Self/○↔Stranger
+      <br>• mod=3 (4k+3): J=匹配, F=不匹配 | □↔Stranger/○↔Self
+      <br><br>正确配对由 mod(subjectID, 2) 决定: 偶数→□↔Self, 奇数→□↔Stranger
+    </div>
+  `;
+}
+
+// ==================== 数据自查功能 ====================
+function populateVerifyFileSelect() {
+  if (appState.allFiles.length > 0) {
+    _populateSelect();
+    return;
+  }
+  fetchAPI('/api/files').then(res => {
+    appState.allFiles = res.files;
+    _populateSelect();
+  });
+}
+function _populateSelect() {
+  const sel = document.getElementById('verifyFileSelect');
+  if (!sel) return;
+  appState.allFiles.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f.name;
+    opt.textContent = `${f.name} (G${f.groupID}-S${f.subjectID})`;
+    sel.appendChild(opt);
+  });
+}
+
+async function doVerifyFile(batchMode) {
+  const statusEl = document.getElementById('verifyStatus');
+  const resultContainer = document.getElementById('verifyResultContainer');
+  statusEl.innerHTML = '<span style="color:#ff9800;">⏳ 校验中，请稍候...</span>';
+  resultContainer.style.display = '';
+  document.getElementById('verifyErrorList').innerHTML = '<div style="padding:16px;text-align:center;color:#ff9800;">正在校验数据文件...</div>';
+  document.getElementById('verifyResultSummary').innerHTML = '';
+
+  if (batchMode) {
+    // 批量校验: 全部文件逐一检查
+    const sampled = appState.allFiles.map(f => f.name).sort();
+
+    let allPassed = true, totalErrors = 0, totalFiles = sampled.length;
+    let summaryHTML = '';
+    let errorDetailsHTML = '';
+
+    for (let i = 0; i < sampled.length; i++) {
+      const fname = sampled[i];
+      statusEl.innerHTML = `<span style="color:#ff9800;">⏳ 校验中 (${i+1}/${totalFiles}): ${fname}</span>`;
+      try {
+        const result = await fetchAPI(`/api/verify/file?name=${encodeURIComponent(fname)}`);
+        if (result.error) continue;
+        totalErrors += result.totalErrors;
+        if (!result.passed) allPassed = false;
+
+        const statusIcon = result.passed ? '✅' : '❌';
+        const statusColor = result.passed ? '#4caf50' : '#f44336';
+        summaryHTML += `
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.82em;">
+            <span style="color:${statusColor};">${statusIcon}</span>
+            <span><b>${fname}</b>: G${result.groupID}-S${result.subjectID} | 正确率:${result.stats.accuracy}% | 遗漏率:${result.stats.omissionRate}% | 错误:${result.totalErrors}</span>
+          </div>`;
+
+        if (!result.passed && result.errors.length > 0) {
+          errorDetailsHTML += `<div style="margin:4px 0;padding:6px 8px;background:rgba(244,67,54,0.08);border-radius:4px;font-size:0.78em;">
+            <b style="color:#f44336;">${fname}</b> (${result.totalErrors}个错误):
+            ${result.errors.slice(0, 5).map(e => `<div style="margin:2px 0;padding-left:8px;">• ${e.detail}</div>`).join('')}
+            ${result.totalErrors > 5 ? `<div style="color:#90a4ae;">...以及另外 ${result.totalErrors-5} 个错误</div>` : ''}
+          </div>`;
+        }
+      } catch(e) {
+        summaryHTML += `<div style="color:#f44336;">❌ ${fname}: 校验失败</div>`;
+      }
+    }
+
+    document.getElementById('verifyResultTitle').textContent = `批量自查结果 (${totalFiles}个文件)`;
+    document.getElementById('verifyResultSummary').innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card"><div class="value">${totalFiles}</div><div class="label">校验文件数</div></div>
+        <div class="stat-card"><div class="value" style="color:${allPassed?'#4caf50':'#f44336'};">${allPassed?'PASS':'FAIL'}</div><div class="label">总体结果</div></div>
+        <div class="stat-card"><div class="value" style="color:${totalErrors>0?'#f44336':'#4caf50'};">${totalErrors}</div><div class="label">总错误数</div></div>
+        <div class="stat-card"><div class="value">${allPassed ? totalFiles : summaryHTML.split('✅').length - 1}</div><div class="label">通过文件</div></div>
+      </div>
+      <div style="max-height:120px;overflow-y:auto;margin-top:8px;">${summaryHTML}</div>`;
+    document.getElementById('verifyErrorList').innerHTML = errorDetailsHTML || '<div style="padding:16px;text-align:center;color:#4caf50;">所有文件校验通过，无错误！✅</div>';
+    statusEl.innerHTML = `<span style="color:${allPassed?'#4caf50':'#f44336'};">批量校验完成 | ${totalFiles}文件 | ${totalErrors}错误</span>`;
+
+  } else {
+    // 单文件校验
+    const fname = document.getElementById('verifyFileSelect').value;
+    if (!fname) {
+      statusEl.innerHTML = '<span style="color:#f44336;">请先选择数据文件</span>';
+      return;
+    }
+    const result = await fetchAPI(`/api/verify/file?name=${encodeURIComponent(fname)}`);
+    if (result.error) {
+      statusEl.innerHTML = `<span style="color:#f44336;">错误: ${result.error}</span>`;
+      return;
+    }
+
+    const passed = result.passed;
+    document.getElementById('verifyResultTitle').textContent = `数据自查结果: ${fname}`;
+    document.getElementById('verifyResultSummary').innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card"><div class="value" style="color:${passed?'#4caf50':'#f44336'};">${passed?'✅ 通过':'❌ 未通过'}</div><div class="label">校验结果</div></div>
+        <div class="stat-card"><div class="value" style="color:${result.totalErrors>0?'#f44336':'#4caf50'};">${result.totalErrors}</div><div class="label">错误总数</div></div>
+        <div class="stat-card"><div class="value">${result.correctKeyErrors}</div><div class="label">CorrectKey错误</div></div>
+        <div class="stat-card"><div class="value">${result.correctColumnErrors}</div><div class="label">Correct列错误</div></div>
+        <div class="stat-card"><div class="value">${result.stats.accuracy}%</div><div class="label">正确率</div></div>
+        <div class="stat-card"><div class="value">${result.stats.omissionRate}%</div><div class="label">遗漏率</div></div>
+      </div>
+      <div style="margin-top:8px;font-size:0.78em;color:#90a4ae;background:var(--bg-card);padding:8px;border-radius:4px;">
+        G${result.groupID}-S${result.subjectID} | 匹配键: <b>${result.experimentParams.matchKey.toUpperCase()}</b> | 不匹配键: <b>${result.experimentParams.mismatchKey.toUpperCase()}</b>
+        <br>P=${result.experimentParams.P} | T=${result.experimentParams.T}s | W=${result.experimentParams.W}s
+        <br>正确配对: ${result.experimentParams.correctOrder}
+      </div>`;
+
+    if (passed) {
+      document.getElementById('verifyErrorList').innerHTML = '<div style="padding:16px;text-align:center;color:#4caf50;">数据文件与实验逻辑完全一致，无需修正！✅</div>';
+    } else {
+      const errs = result.errors;
+      let html = '<table><thead><tr><th>#</th><th>试次</th><th>形状</th><th>标签</th><th>类型</th><th>期望值</th><th>实际值</th><th>响应</th></tr></thead><tbody>';
+      errs.slice(0, 100).forEach((e, i) => {
+        html += `<tr>
+          <td>${i+1}</td><td>${e.trialID}</td><td>${e.shape}</td><td>${e.label}</td>
+          <td style="color:#f44336;"><b>${e.type}</b></td>
+          <td style="color:#4caf50;">${e.expected}</td>
+          <td style="color:#f44336;">${e.got}</td>
+          <td>${e.response}</td>
+        </tr>`;
+      });
+      if (result.errorCount > 100) {
+        html += `<tr><td colspan="8" style="text-align:center;color:#90a4ae;">...以及另外 ${result.errorCount - 100} 个错误（仅显示前100条）</td></tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('verifyErrorList').innerHTML = html;
+    }
+    statusEl.innerHTML = `<span style="color:${passed?'#4caf50':'#f44336'};">校验完成: ${fname} | ${result.totalErrors}个错误</span>`;
+  }
+}
+
+// ==================== TAB 2: DATA BROWSER ====================
+async function renderDataTab(lp, rp) {
+  lp.innerHTML = `
+    <div class="section-title">被试数据文件</div>
+    <div class="group-tabs" style="margin-bottom:8px;">
+      ${[1,2,3,4,5,6,7,8].map(g => `<button class="group-tab ${appState.selectedGroups.has(g)?'selected':''}" data-g="${g}">G${g}</button>`).join('')}
+      <button class="group-tab" data-g="all" style="${appState.selectedGroups.size===8?'background:#64b5f6;color:#0d1b2a;':''}">全部</button>
+    </div>
+    <input type="text" id="fileSearch" placeholder="搜索文件名..." style="width:100%;margin-bottom:8px;">
+    <div class="file-list" id="fileList">加载中...</div>
+    <div class="section-title" style="margin-top:12px;">数据概览</div>
+    <div class="stats-grid" id="dataStats">
+      <div class="stat-card"><div class="value">-</div><div class="label">总试次</div></div>
+      <div class="stat-card"><div class="value">-</div><div class="label">正式试次</div></div>
+      <div class="stat-card"><div class="value">-</div><div class="label">遗漏率</div></div>
+      <div class="stat-card"><div class="value">-</div><div class="label">正确率</div></div>
+    </div>
+  `;
+  rp.innerHTML = `
+    <div class="chart-container">
+      <div class="section-title">数据预览 <span id="previewTitle" style="font-size:0.8em;color:#90a4ae;"></span></div>
+      <div class="data-preview" id="dataPreview">
+        <div style="padding:20px;text-align:center;color:#90a4ae;">请从左侧选择数据文件</div>
+      </div>
+    </div>
+    <div class="chart-container">
+      <div class="section-title">RT分布直方图</div>
+      <canvas id="rtHistogram" style="max-height:280px;"></canvas>
+    </div>
+  `;
+
+  document.querySelectorAll('.group-tab').forEach(b => {
+    b.addEventListener('click', () => {
+      const g = b.dataset.g;
+      if (g === 'all') {
+        if (appState.selectedGroups.size === 8) appState.selectedGroups.clear();
+        else [1,2,3,4,5,6,7,8].forEach(x => appState.selectedGroups.add(x));
+      } else {
+        const gn = parseInt(g);
+        if (appState.selectedGroups.has(gn)) appState.selectedGroups.delete(gn);
+        else appState.selectedGroups.add(gn);
+      }
+      renderFileList();
+    });
+  });
+
+  document.getElementById('fileSearch').addEventListener('input', renderFileList);
+
+  if (appState.allFiles.length === 0) {
+    const res = await fetchAPI('/api/files');
+    appState.allFiles = res.files;
+  }
+  renderFileList();
+}
+
+function renderFileList() {
+  const search = (document.getElementById('fileSearch')?.value || '').toLowerCase();
+  const filtered = appState.allFiles.filter(f => {
+    if (!appState.selectedGroups.has(f.groupID)) return false;
+    if (search && !f.name.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  const html = filtered.map(f => `
+    <div class="file-item ${appState.selectedFile===f.name?'selected':''}" data-file="${f.name}">
+      <div>
+        <span style="color:#64b5f6;">${f.name}</span>
+        <div style="font-size:0.7em;color:#90a4ae;">${f.groupLabel}</div>
+      </div>
+      <span class="badge badge-self">G${f.groupID}-S${f.subjectID}</span>
+    </div>
+  `).join('');
+  document.getElementById('fileList').innerHTML = html || '<div style="padding:16px;text-align:center;color:#90a4ae;">无匹配文件</div>';
+
+  document.querySelectorAll('.file-item').forEach(el => {
+    el.addEventListener('click', () => loadDataFile(el.dataset.file));
+  });
+}
+
+async function loadDataFile(filename) {
+  appState.selectedFile = filename;
+  appState.currentData = await fetchAPI(`/api/data/file?name=${encodeURIComponent(filename)}`);
+  document.getElementById('previewTitle').textContent = filename;
+  renderFileList();
+  renderDataPreview();
+  renderRTDistribution();
+  updateDataStats();
+}
+
+function renderDataPreview() {
+  if (!appState.currentData) return;
+  const trials = appState.currentData.trials.slice(0, 100);
+  const cols = ['trialID','Shape','Label','Condition','Identity','CorrectKey','Response','RT','Correct'];
+  let html = '<table><thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  trials.forEach(t => {
+    const rt = t.RT !== null ? t.RT.toFixed(3) : 'NA';
+    html += `<tr>
+      <td>${t.trialID}</td><td>${t.Shape}</td><td>${t.Label}</td>
+      <td><span class="badge-${t.Condition==='Matching'?'matching':'nonmatching'}">${t.Condition}</span></td>
+      <td><span class="badge-${t.Identity==='Self'?'self':'stranger'}">${t.Identity}</span></td>
+      <td>${t.CorrectKey}</td><td>${t.Response}</td><td>${rt}</td>
+      <td>${t.Correct===1?'✓':t.Correct===0?'✗':'-'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('dataPreview').innerHTML = html;
+}
+
+function updateDataStats() {
+  if (!appState.currentData) return;
+  const s = appState.currentData.stats;
+  document.getElementById('dataStats').innerHTML = `
+    <div class="stat-card"><div class="value">${s.total}</div><div class="label">总试次</div></div>
+    <div class="stat-card"><div class="value">${s.formal}</div><div class="label">正式试次</div></div>
+    <div class="stat-card"><div class="value">${s.omissionRate}%</div><div class="label">遗漏率</div></div>
+    <div class="stat-card"><div class="value">${s.accuracy}%</div><div class="label">正确率</div></div>
+  `;
+}
+
+let rtChart = null;
+function renderRTDistribution() {
+  if (!appState.currentData) return;
+  const rts = appState.currentData.trials.filter(t => t.RT !== null && t.stage === 'formal').map(t => t.RT);
+  if (rts.length === 0) return;
+  const bins = 30;
+  const min = Math.min(...rts), max = Math.max(...rts);
+  const bw = (max - min) / bins;
+  const hist = new Array(bins).fill(0);
+  rts.forEach(v => { const idx = Math.min(Math.floor((v-min)/bw), bins-1); hist[idx]++; });
+
+  const ctx = document.getElementById('rtHistogram').getContext('2d');
+  if (rtChart) rtChart.destroy();
+  rtChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: Array.from({length:bins}, (_,i) => (min+i*bw).toFixed(2)),
+      datasets: [{ label: '频次', data: hist, backgroundColor: 'rgba(100,181,246,0.5)', borderColor: '#64b5f6', borderWidth: 1 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'RT (秒)', color: appState.theme === 'light' ? '#5a6c7d' : '#90a4ae' }, ticks: { color: appState.theme === 'light' ? '#5a6c7d' : '#90a4ae', maxTicksLimit: 15 }, grid: { color: appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)' } },
+        y: { title: { display: true, text: '频次', color: appState.theme === 'light' ? '#5a6c7d' : '#90a4ae' }, ticks: { color: appState.theme === 'light' ? '#5a6c7d' : '#90a4ae' }, grid: { color: appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+}
+
+// ==================== TAB 3: CRF VISUALIZATION ====================
+/*
+ * CRF 数据流文档
+ * ===============
+ * 数据源: 2_Data/Real_Data/UnExtact/raw/EXP_data_group*.csv (88个文件)
+ * API端点: /api/data/file?name= (单文件), /api/data/all?group= (聚合)
+ *
+ * 数据流转路径:
+ *   CSV文件 → app_server.py parse → JSON {trials[], stats, summary}
+ *   → 前端 fetch → appState.allData / appState.currentData
+ *   → getFilteredTrials() 筛选
+ *     - 仅保留 stage==='formal' 且 RT !== null 的试次
+ *     - 按 Matching/NonMatching, Self/Stranger, CorrectOnly 条件过滤
+ *   → computeCRF(trials, nQuantiles) 分箱计算
+ *     1. 按 RT 升序排序
+ *     2. 等宽分桶 nQuantiles 个 (最后一个桶取余数)
+ *     3. 每桶计算: rtMean(平均值), upperProp(Matching比例)
+ *   → Chart.js scatter-with-lines 渲染
+ *
+ * 关键数据字段:
+ *   - RT: 反应时(秒), 数值型, null表示遗漏
+ *   - Condition: "Matching"/"NonMatching", 由Shape+Label+subjectID计算
+ *   - Identity: "Self"/"Stranger", 由Label字段派生
+ *   - Correct: 0/1/null, 正确/错误/遗漏
+ *   - stage: "practice"/"formal", 仅formal用于分析
+ *   - Response: "f"/"j"/"NA", 被试按键响应
+ *
+ * SPE (Self-Processing Effect):
+ *   SPE = P_Matching(Self) - P_Matching(Stranger)
+ *   正值表示Self条件下更偏向Matching选择
+ */
+
+// 防抖工具
+let _crfDebounceTimer = null;
+function debounceCRF(fn, delay = 150) {
+  clearTimeout(_crfDebounceTimer);
+  _crfDebounceTimer = setTimeout(fn, delay);
+}
+
+let _crfGroupDebounceTimer = null;
+function debounceCRFGroup(fn) {
+  clearTimeout(_crfGroupDebounceTimer);
+  _crfGroupDebounceTimer = setTimeout(fn, 300);
+}
+
+// CRF图表缓存数据 (用于增量更新)
+let _crfCache = { selfTrials: [], strangerTrials: [], nQ: 5 };
+
+async function renderVisualizationTab(lp, rp) {
+  lp.innerHTML = `
+    <div class="section-title">数据选择</div>
+    <div class="crf-mode-tabs" style="display:flex;gap:4px;margin-bottom:8px;">
+      <button class="crf-mode-btn active" data-mode="aggregate">组别聚合</button>
+      <button class="crf-mode-btn" data-mode="single">单个被试</button>
+    </div>
+
+    <!-- 组别聚合模式 -->
+    <div id="crfAggregateMode">
+      <div class="group-tabs" style="margin-bottom:6px;" id="crfGroupTabs">
+        ${[1,2,3,4,5,6,7,8].map(g => `<button class="group-tab ${appState.selectedGroups.has(g)?'selected':''}" data-g="${g}">G${g}</button>`).join('')}
+        <button class="group-tab" data-g="all" style="${appState.selectedGroups.size===8?'background:var(--accent);color:#fff;':''}">全部</button>
+        <button class="group-tab" data-g="clear">清空</button>
+      </div>
+      <button id="btnLoadAggData" style="width:100%;margin-bottom:4px;">加载选中组别</button>
+      <div style="font-size:0.7em;color:var(--accent);margin-bottom:4px;" id="crfGroupSummary"></div>
+    </div>
+
+    <!-- 单个被试模式 -->
+    <div id="crfSingleMode" style="display:none;">
+      <input type="text" id="crfFileSearch" placeholder="搜索文件名/被试ID..." style="width:100%;margin-bottom:4px;">
+      <div class="file-list" id="crfFileList" style="max-height:180px;"></div>
+      <div style="font-size:0.7em;color:var(--text-secondary);margin-top:4px;" id="crfSingleInfo"></div>
+    </div>
+
+    <div id="crfDataInfo" style="font-size:0.75em;color:var(--text-secondary);margin:8px 0;min-height:1.2em;">
+      <span style="color:#ff9800;">请先加载数据</span>
+    </div>
+
+    <div class="section-title">筛选条件 <span id="crfFilterBadge" style="font-size:0.65em;color:var(--text-secondary);margin-left:4px;"></span></div>
+    <div class="filter-row">
+      <label class="crf-filter-chip" id="chipMatching" style="background:rgba(76,175,80,0.15);border:1px solid rgba(76,175,80,0.4);padding:2px 8px;border-radius:10px;cursor:pointer;font-size:0.78em;">
+        <input type="checkbox" id="filtMatching" checked style="display:none;"> ✓ Matching</label>
+      <label class="crf-filter-chip" id="chipNonMatching" style="background:rgba(244,67,54,0.15);border:1px solid rgba(244,67,54,0.4);padding:2px 8px;border-radius:10px;cursor:pointer;font-size:0.78em;">
+        <input type="checkbox" id="filtNonMatching" checked style="display:none;"> ✓ NonMatching</label>
+    </div>
+    <div class="filter-row">
+      <label class="crf-filter-chip" id="chipSelf" style="background:rgba(255,152,0,0.15);border:1px solid rgba(255,152,0,0.4);padding:2px 8px;border-radius:10px;cursor:pointer;font-size:0.78em;">
+        <input type="checkbox" id="filtSelf" checked style="display:none;"> ✓ Self</label>
+      <label class="crf-filter-chip" id="chipStranger" style="background:rgba(33,150,243,0.15);border:1px solid rgba(33,150,243,0.4);padding:2px 8px;border-radius:10px;cursor:pointer;font-size:0.78em;">
+        <input type="checkbox" id="filtStranger" checked style="display:none;"> ✓ Stranger</label>
+    </div>
+    <div class="filter-row">
+      <label class="crf-filter-chip" id="chipCorrect" style="background:rgba(156,39,176,0.12);border:1px solid rgba(156,39,176,0.35);padding:2px 8px;border-radius:10px;cursor:pointer;font-size:0.78em;">
+        <input type="checkbox" id="filtCorrectOnly" style="display:none;"> 仅正确试次</label>
+    </div>
+
+    <div class="section-title">分位数设置</div>
+    <div class="slider-row">
+      <span>分位数:</span>
+      <input type="range" id="quantileSlider" min="3" max="10" value="5">
+      <span id="quantileVal" style="color:var(--accent);">5</span>
+    </div>
+
+    <div class="section-title">CRF说明</div>
+    <div style="font-size:0.75em;color:var(--text-secondary);line-height:1.6;">
+      横轴: RT均值(秒) 按分位数分箱<br>
+      纵轴: 选择"匹配"键的比例 (DDM上边界)<br>
+      Matching=正确匹配键 | NonMatching=错误匹配键<br>
+      橙色 = Self | 蓝色 = Stranger<br>
+      --- 虚线 = 无偏向基线 (P=0.5)<br>
+      <span style="color:var(--accent);">基于Sui(2012) Self-Matching Task</span>
+    </div>
+  `;
+  rp.innerHTML = `
+    <div class="chart-container" style="flex:2;">
+      <div class="section-title">CRF: Self vs Stranger <span id="crfChartTitle" style="font-size:0.8em;color:var(--text-secondary);"></span>
+        <span id="crfLoading" style="display:none;font-size:0.7em;color:#ff9800;margin-left:8px;">⏳ 计算中...</span>
+      </div>
+      <canvas id="crfChart" style="max-height:400px;"></canvas>
+    </div>
+    <div class="chart-container" style="flex:1;">
+      <div class="section-title">SPE差异 (Self - Stranger)</div>
+      <canvas id="speChart" style="max-height:250px;"></canvas>
+    </div>
+    <div class="chart-container" style="flex:3;overflow-y:auto;min-height:0;">
+      <div class="section-title">源码与处理流程 — 从 raw CSV 到 CRF 可视化</div>
+      <div style="padding:8px 0;">
+        <div class="pipeline-flow">
+          <span>📍 数据路径: </span>
+          <span class="pipeline-step">raw/*.csv</span>
+          <span>→</span>
+          <span class="pipeline-step">Python parse</span>
+          <span>→</span>
+          <span class="pipeline-step">JSON API</span>
+          <span>→</span>
+          <span class="pipeline-step">JS filter</span>
+          <span>→</span>
+          <span class="pipeline-step">CRF compute</span>
+          <span>→</span>
+          <span class="pipeline-step">Chart.js</span>
+        </div>
+        <div id="crfSrcSteps"></div>
+      </div>
+    </div>
+  `;
+
+  // 确保文件列表已加载
+  if (appState.allFiles.length === 0) {
+    const res = await fetchAPI('/api/files');
+    appState.allFiles = res.files;
+  }
+
+  // 初始化模式切换
+  initCRFModeSwitch();
+  // 初始化筛选条件chip按钮
+  initCRFFilterChips();
+  // 初始化分位数滑块（带防抖）
+  initCRFSlider();
+  // 初始化组别选择
+  initCRFGroupTabs();
+  // 初始化文件搜索
+  initCRFFileSearch();
+  // 渲染文件列表
+  renderCRFFileList();
+  // 源码展示
+  renderCRFSourceCode();
+}
+
+// === 模式切换 ===
+function initCRFModeSwitch() {
+  document.querySelectorAll('.crf-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.crf-mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.mode;
+      document.getElementById('crfAggregateMode').style.display = mode === 'aggregate' ? '' : 'none';
+      document.getElementById('crfSingleMode').style.display = mode === 'single' ? '' : 'none';
+      appState._crfMode = mode;
+      // 切换模式时重置数据源
+      appState.allData = null;
+      appState.currentData = null;
+      document.getElementById('crfDataInfo').innerHTML = '<span style="color:#ff9800;">请先加载数据</span>';
+      document.getElementById('crfChartTitle').textContent = '';
+      clearCRFCharts();
+    });
+  });
+}
+
+// === 筛选条件chip按钮 ===
+function initCRFFilterChips() {
+  const chips = {
+    chipMatching: 'filtMatching',
+    chipNonMatching: 'filtNonMatching',
+    chipSelf: 'filtSelf',
+    chipStranger: 'filtStranger',
+    chipCorrect: 'filtCorrectOnly',
+  };
+  const colors = {
+    chipMatching: { active: 'rgba(76,175,80,0.25)', inactive: 'rgba(76,175,80,0.08)', border: 'rgba(76,175,80,0.5)' },
+    chipNonMatching: { active: 'rgba(244,67,54,0.25)', inactive: 'rgba(244,67,54,0.08)', border: 'rgba(244,67,54,0.5)' },
+    chipSelf: { active: 'rgba(255,152,0,0.25)', inactive: 'rgba(255,152,0,0.08)', border: 'rgba(255,152,0,0.5)' },
+    chipStranger: { active: 'rgba(33,150,243,0.25)', inactive: 'rgba(33,150,243,0.08)', border: 'rgba(33,150,243,0.5)' },
+    chipCorrect: { active: 'rgba(156,39,176,0.2)', inactive: 'rgba(156,39,176,0.06)', border: 'rgba(156,39,176,0.4)' },
+  };
+
+  Object.entries(chips).forEach(([chipId, checkId]) => {
+    const chip = document.getElementById(chipId);
+    const checkbox = document.getElementById(checkId);
+    if (!chip || !checkbox) return;
+
+    const updateChipStyle = () => {
+      const c = colors[chipId];
+      if (checkbox.checked) {
+        chip.style.background = c.active;
+        chip.style.borderColor = c.border;
+        chip.style.opacity = '1';
+      } else {
+        chip.style.background = c.inactive;
+        chip.style.borderColor = 'rgba(128,128,128,0.2)';
+        chip.style.opacity = '0.55';
+      }
+    };
+
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      checkbox.checked = !checkbox.checked;
+      updateChipStyle();
+      updateCRFFilters();
+    });
+    updateChipStyle();
+  });
+}
+
+// === 分位数滑块 (带防抖) ===
+function initCRFSlider() {
+  const slider = document.getElementById('quantileSlider');
+  slider.addEventListener('input', () => {
+    document.getElementById('quantileVal').textContent = slider.value;
+    debounceCRF(() => updateCRFChart(), 150);
+  });
+}
+
+// === 组别标签 ===
+function initCRFGroupTabs() {
+  document.querySelectorAll('#crfGroupTabs .group-tab').forEach(b => {
+    b.addEventListener('click', () => {
+      const g = b.dataset.g;
+      if (g === 'all') {
+        if (appState.selectedGroups.size === 8) appState.selectedGroups.clear();
+        else [1,2,3,4,5,6,7,8].forEach(x => appState.selectedGroups.add(x));
+      } else if (g === 'clear') {
+        appState.selectedGroups.clear();
+      } else {
+        const gn = parseInt(g);
+        if (appState.selectedGroups.has(gn)) appState.selectedGroups.delete(gn);
+        else appState.selectedGroups.add(gn);
+      }
+      updateCRFGroupTabStyles();
+      updateCRFFileList();
+      // 组别变化时，如果当前是聚合模式且有数据，自动提示重新加载
+      const infoEl = document.getElementById('crfGroupSummary');
+      if (appState.selectedGroups.size > 0) {
+        const labels = [];
+        [1,2,3,4,5,6,7,8].forEach(g => {
+          if (appState.selectedGroups.has(g)) labels.push(`G${g}`);
+        });
+        infoEl.textContent = `已选: ${labels.join(', ')} (${appState.selectedGroups.size}组)`;
+      } else {
+        infoEl.textContent = '未选择任何组别';
+      }
+    });
+  });
+
+  document.getElementById('btnLoadAggData').addEventListener('click', () => {
+    if (appState.selectedGroups.size === 0) {
+      showToast('请先选择至少一个组别', 'error');
+      return;
+    }
+    loadAggregatedData();
+  });
+}
+
+// === 文件搜索与列表 ===
+function initCRFFileSearch() {
+  document.getElementById('crfFileSearch').addEventListener('input', debounceCRFGroup(() => renderCRFFileList()));
+}
+
+function renderCRFFileList() {
+  const search = (document.getElementById('crfFileSearch')?.value || '').toLowerCase();
+  let filtered = appState.allFiles;
+  if (search) {
+    filtered = filtered.filter(f =>
+      f.name.toLowerCase().includes(search) ||
+      String(f.subjectID).includes(search) ||
+      f.groupLabel.toLowerCase().includes(search)
+    );
+  }
+  // 按组别筛选
+  if (appState.selectedGroups.size < 8) {
+    filtered = filtered.filter(f => appState.selectedGroups.has(f.groupID));
+  }
+
+  const groups = {};
+  filtered.forEach(f => {
+    if (!groups[f.groupID]) groups[f.groupID] = [];
+    groups[f.groupID].push(f);
+  });
+
+  let html = '';
+  Object.keys(groups).sort().forEach(gid => {
+    const qualityMap = {1:'exclude',2:'exclude',3:'caution',4:'good',5:'good',6:'good',7:'good',8:'good'};
+    html += `<div style="font-size:0.7em;color:var(--accent);padding:4px 8px 2px;font-weight:600;">G${gid} <span style="color:var(--text-secondary);font-weight:400;">[${qualityMap[gid]}]</span></div>`;
+    groups[gid].forEach(f => {
+      const sel = appState.selectedFile === f.name;
+      html += `<div class="file-item ${sel?'selected':''}" data-file="${f.name}" style="padding:6px 8px;">
+        <span style="font-size:0.78em;">S${f.subjectID} <span style="color:var(--text-secondary);">${f.name}</span></span>
+      </div>`;
+    });
+  });
+
+  const listEl = document.getElementById('crfFileList');
+  if (!listEl) return;
+  listEl.innerHTML = html || '<div style="padding:12px;text-align:center;color:var(--text-secondary);font-size:0.8em;">无匹配文件</div>';
+
+  listEl.querySelectorAll('.file-item').forEach(el => {
+    el.addEventListener('click', async () => {
+      listEl.querySelectorAll('.file-item').forEach(e => e.classList.remove('selected'));
+      el.classList.add('selected');
+      const fname = el.dataset.file;
+      appState.selectedFile = fname;
+      appState.allData = null;
+      document.getElementById('crfDataInfo').innerHTML = '<span style="color:#ff9800;">加载中...</span>';
+      try {
+        appState.currentData = await fetchAPI(`/api/data/file?name=${encodeURIComponent(fname)}`);
+        document.getElementById('crfDataInfo').textContent =
+          `已加载: ${fname} | G${appState.currentData.groupID}-S${appState.currentData.subjectID} | ${appState.currentData.stats.formal}正式试次 | 正确率${appState.currentData.stats.accuracy}%`;
+        document.getElementById('crfSingleInfo').textContent =
+          `G${appState.currentData.groupID}-S${appState.currentData.subjectID} | 遗漏率${appState.currentData.stats.omissionRate}%`;
+        updateCRFChart();
+      } catch(e) {
+        document.getElementById('crfDataInfo').innerHTML = '<span style="color:#f44336;">加载失败</span>';
+      }
+    });
+  });
+}
+
+// === 筛选条件更新 ===
+function updateCRFFilters() {
+  appState.activeFilters = {
+    matching: document.getElementById('filtMatching')?.checked ?? true,
+    nonMatching: document.getElementById('filtNonMatching')?.checked ?? true,
+    self: document.getElementById('filtSelf')?.checked ?? true,
+    stranger: document.getElementById('filtStranger')?.checked ?? true,
+    correctOnly: document.getElementById('filtCorrectOnly')?.checked ?? false,
+  };
+  // 更新筛选标签
+  const active = [];
+  if (appState.activeFilters.matching) active.push('Matching');
+  if (appState.activeFilters.nonMatching) active.push('NonMatching');
+  if (appState.activeFilters.self) active.push('Self');
+  if (appState.activeFilters.stranger) active.push('Stranger');
+  if (appState.activeFilters.correctOnly) active.push('CorrectOnly');
+  const badge = document.getElementById('crfFilterBadge');
+  if (badge) badge.textContent = active.length > 0 ? `(${active.join('+')})` : '';
+  debounceCRF(() => updateCRFChart(), 100);
+}
+
+// === 数据过滤 ===
+function getFilteredTrials() {
+  let trials = appState.allData ? appState.allData.trials :
+    (appState.currentData ? appState.currentData.trials : []);
+  const f = appState.activeFilters;
+  const result = [];
+  for (let i = 0; i < trials.length; i++) {
+    const t = trials[i];
+    if (t.stage !== 'formal') continue;
+    if (t.RT === null) continue;
+    if (!f.matching && t.Condition === 'Matching') continue;
+    if (!f.nonMatching && t.Condition === 'NonMatching') continue;
+    if (!f.self && t.Identity === 'Self') continue;
+    if (!f.stranger && t.Identity === 'Stranger') continue;
+    if (f.correctOnly && t.Correct !== 1) continue;
+    result.push(t);
+  }
+  return result;
+}
+
+// === CRF计算 ===
+// upperProp = 被试按"匹配"键的比例 (DDM上边界), 不是Condition==Matching
+// 即使Matching条件中,被试也可能按错键(按不匹配键), 比例不会是100%
+function computeCRF(trials, nQuantiles) {
+  if (trials.length < nQuantiles * 2) return null;
+  const sorted = [...trials].sort((a, b) => a.RT - b.RT);
+  const n = sorted.length;
+  const qSize = Math.floor(n / nQuantiles);
+  const bins = [];
+  let start = 0;
+  for (let i = 0; i < nQuantiles; i++) {
+    const end = i === nQuantiles - 1 ? n : start + qSize;
+    let rtSum = 0, nMatchResp = 0;
+    for (let j = start; j < end; j++) {
+      rtSum += sorted[j].RT;
+      if (sorted[j].ResponseIsMatch) nMatchResp++;
+    }
+    const count = end - start;
+    bins.push({ rtMean: rtSum / count, upperProp: nMatchResp / count, n: count });
+    start = end;
+  }
+  return bins;
+}
+
+// === 图表实例 ===
+let crfChartInst = null;
+let speChartInst = null;
+
+function clearCRFCharts() {
+  if (crfChartInst) { crfChartInst.destroy(); crfChartInst = null; }
+  if (speChartInst) { speChartInst.destroy(); speChartInst = null; }
+}
+
+// === 主绘图函数 (优化版) ===
+function updateCRFChart() {
+  const loadingEl = document.getElementById('crfLoading');
+  if (loadingEl) loadingEl.style.display = '';
+
+  // 使用 requestAnimationFrame 避免阻塞UI
+  requestAnimationFrame(() => {
+    const trials = getFilteredTrials();
+    if (trials.length === 0) {
+      document.getElementById('crfChartTitle').textContent = ' (无匹配数据)';
+      if (loadingEl) loadingEl.style.display = 'none';
+      clearCRFCharts();
+      return;
+    }
+    const nQ = parseInt(document.getElementById('quantileSlider')?.value || 5);
+    appState.quantileN = nQ;
+
+    const selfTrials = trials.filter(t => t.Identity === 'Self');
+    const strangerTrials = trials.filter(t => t.Identity === 'Stranger');
+    
+    // 缓存用于后续对比
+    _crfCache = { selfTrials: selfTrials.length, strangerTrials: strangerTrials.length, nQ };
+
+    const crfSelf = computeCRF(selfTrials, nQ);
+    const crfStranger = computeCRF(strangerTrials, nQ);
+
+    const titleEl = document.getElementById('crfChartTitle');
+    titleEl.textContent = `(n=${trials.length}, Self=${selfTrials.length}, Stranger=${strangerTrials.length}, Q=${nQ})`;
+
+    const ctx = document.getElementById('crfChart').getContext('2d');
+
+    const datasets = [];
+    if (crfSelf) {
+      datasets.push({
+        label: 'Self',
+        data: crfSelf.map(b => ({ x: b.rtMean, y: b.upperProp })),
+        borderColor: '#ff9800', backgroundColor: '#ff9800',
+        pointRadius: 6, pointHoverRadius: 8, borderWidth: 2.5, tension: 0.1,
+        order: 1,
+      });
+    }
+    if (crfStranger) {
+      datasets.push({
+        label: 'Stranger',
+        data: crfStranger.map(b => ({ x: b.rtMean, y: b.upperProp })),
+        borderColor: '#2196f3', backgroundColor: '#2196f3',
+        pointRadius: 6, pointHoverRadius: 8, borderWidth: 2.5, tension: 0.1,
+        order: 1,
+      });
+    }
+
+    const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+    const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+    const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+    // 0.5基线插件
+    const baselinePlugin = {
+      id: 'baseline05',
+      afterDraw(chart) {
+        const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+        const y05 = y.getPixelForValue(0.5);
+        if (y05 >= chart.chartArea.top && y05 <= chart.chartArea.bottom) {
+          ctx.save();
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = textColor;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(left, y05);
+          ctx.lineTo(right, y05);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    };
+
+    // 增量更新：如果已有实例则更新数据，否则创建新实例
+    if (crfChartInst) {
+      crfChartInst.data.datasets = datasets;
+      crfChartInst.options.scales.x.title.color = textColor;
+      crfChartInst.options.scales.x.ticks.color = textColor;
+      crfChartInst.options.scales.x.grid.color = gridColor;
+      crfChartInst.options.scales.y.title.color = textColor;
+      crfChartInst.options.scales.y.ticks.color = textColor;
+      crfChartInst.options.scales.y.grid.color = gridColor;
+      crfChartInst.options.plugins.legend.labels.color = legendColor;
+      crfChartInst.update('active');
+    } else {
+      crfChartInst = new Chart(ctx, {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false, showLine: true,
+          animation: { duration: 200 },
+          plugins: {
+            legend: { labels: { color: legendColor, usePointStyle: true } },
+          },
+          scales: {
+            x: {
+              type: 'linear', title: { display: true, text: 'RT (秒)', color: textColor },
+              ticks: { color: textColor }, grid: { color: gridColor }
+            },
+            y: {
+              title: { display: true, text: '匹配键选择比例 (P_Match_Response)', color: textColor },
+              min: 0, max: 1, ticks: { color: textColor, stepSize: 0.1 },
+              grid: { color: gridColor }
+            }
+          }
+        },
+        plugins: [baselinePlugin],
+      });
+    }
+
+    updateSPEChart(crfSelf, crfStranger);
+    if (loadingEl) loadingEl.style.display = 'none';
+  });
+}
+
+// === SPE图表 ===
+function updateSPEChart(crfSelf, crfStranger) {
+  const ctx = document.getElementById('speChart').getContext('2d');
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  if (!crfSelf || !crfStranger) {
+    if (speChartInst) { speChartInst.destroy(); speChartInst = null; }
+    speChartInst = new Chart(ctx, {
+      type: 'scatter', data: { datasets: [] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+    return;
+  }
+
+  const speData = [];
+  const minLen = Math.min(crfSelf.length, crfStranger.length);
+  for (let i = 0; i < minLen; i++) {
+    speData.push({
+      x: (crfSelf[i].rtMean + crfStranger[i].rtMean) / 2,
+      y: crfSelf[i].upperProp - crfStranger[i].upperProp,
+    });
+  }
+
+  const dataset = {
+    label: 'P_Self - P_Stranger',
+    data: speData,
+    borderColor: '#ce93d8', backgroundColor: '#ce93d8',
+    pointRadius: 7, pointHoverRadius: 10, borderWidth: 2.5, tension: 0.1,
+  };
+
+  if (speChartInst) {
+    speChartInst.data.datasets = [dataset];
+    speChartInst.options.scales.x.title.color = textColor;
+    speChartInst.options.scales.x.ticks.color = textColor;
+    speChartInst.options.scales.x.grid.color = gridColor;
+    speChartInst.options.scales.y.title.color = textColor;
+    speChartInst.options.scales.y.ticks.color = textColor;
+    speChartInst.options.scales.y.grid.color = gridColor;
+    speChartInst.options.plugins.legend.labels.color = legendColor;
+    speChartInst.update('active');
+  } else {
+    speChartInst = new Chart(ctx, {
+      type: 'scatter',
+      data: { datasets: [dataset] },
+      options: {
+        responsive: true, maintainAspectRatio: false, showLine: true,
+        animation: { duration: 200 },
+        plugins: {
+          legend: { labels: { color: legendColor, usePointStyle: true } },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'RT均值 (秒)', color: textColor },
+            ticks: { color: textColor }, grid: { color: gridColor }
+          },
+          y: {
+            title: { display: true, text: 'Δ 匹配键比例', color: textColor },
+            ticks: { color: textColor },
+            grid: { color: gridColor }
+          }
+        }
+      }
+    });
+  }
+}
+
+// === 聚合数据加载 (带状态指示) ===
+async function loadAggregatedData() {
+  const infoEl = document.getElementById('crfDataInfo');
+  infoEl.innerHTML = '<span style="color:#ff9800;">⏳ 加载聚合数据中...</span>';
+  const groups = Array.from(appState.selectedGroups).join(',');
+  try {
+    appState.allData = await fetchAPI(`/api/data/all?group=${groups}`);
+    appState.currentData = null;
+    const totalTrials = appState.allData.trials.length;
+    const totalFiles = appState.allData.summary.length;
+    infoEl.textContent = `已加载: ${totalFiles}个文件, ${totalTrials}试次 (G${groups})`;
+    updateCRFChart();
+  } catch(e) {
+    infoEl.innerHTML = '<span style="color:#f44336;">加载失败，请重试</span>';
+  }
+}
+
+function updateCRFGroupTabStyles() {
+  document.querySelectorAll('#crfGroupTabs .group-tab').forEach(b => {
+    const g = b.dataset.g;
+    if (g === 'all') {
+      b.style.background = appState.selectedGroups.size === 8 ? 'var(--accent)' : '';
+      b.style.color = appState.selectedGroups.size === 8 ? '#fff' : '';
+    } else if (g === 'clear') {
+      // 清空按钮保持默认样式
+    } else {
+      b.classList.toggle('selected', appState.selectedGroups.has(parseInt(g)));
+    }
+  });
+}
+
+// === 源码展示 (真实代码, 逐步展示数据流) ===
+function renderCRFSourceCode() {
+  const container = document.getElementById('crfSrcSteps');
+  if (!container) return;
+
+  const steps = [
+    {
+      title: '定义实验参数 & 按键映射规则',
+      color: '#4caf50',
+      lang: 'Python (app_server.py)',
+      code: `# 8组实验条件 (P/T/W参数)
+CONDITIONS = {
+    1: {"P": 0, "T": 0.03, "W": 0.3, "label": "G1"},
+    2: {"P": 0, "T": 0.03, "W": 0.6, "label": "G2"},
+    3: {"P": 120, "T": 0.03, "W": 0.6, "label": "G3"},
+    4: {"P": 120, "T": 0.08, "W": 0.6, "label": "G4"},
+    5: {"P": 8, "T": 0.1, "W": 1.1, "label": "G5"},
+    6: {"P": 120, "T": 0.5, "W": 1.5, "label": "G6"},
+    7: {"P": 0, "T": 0.1, "W": 1.1, "label": "G7"},
+    8: {"P": 120, "T": 0.03, "W": 0.8, "label": "G8"},
+}
+
+# 按键映射规则: 4种模式 (subjectID % 4 决定)
+def get_pairing_rules(subject_id):
+    rules = {
+        0: {"square":{"self":"f","stranger":"j"},
+            "circle":{"self":"j","stranger":"f"}},
+        1: {"square":{"self":"j","stranger":"f"},
+            "circle":{"self":"f","stranger":"j"}},
+        2: {"square":{"self":"j","stranger":"f"},
+            "circle":{"self":"f","stranger":"j"}},
+        3: {"square":{"self":"f","stranger":"j"},
+            "circle":{"self":"j","stranger":"f"}},
+    }
+    return rules[subject_id % 4]
+
+# 4试次循环匹配键: {f,j,j,f}
+def get_match_key(subject_id):
+    match_keys = ['f', 'j', 'j', 'f']
+    return match_keys[(subject_id - 1) % 4]
+
+# 正确配对: 偶数→square↔self, 奇数→square↔stranger
+def get_correct_order(subject_id):
+    if subject_id % 2 == 0:
+        return {"square": "self", "circle": "stranger"}
+    else:
+        return {"square": "stranger", "circle": "self"}`,
+    },
+    {
+      title: '读取CSV → 解析试次 → 计算Condition/Identity/ResponseIsMatch',
+      color: '#2196f3',
+      lang: 'Python (app_server.py)',
+      code: `def load_file_data(filename):
+    fpath = RAW_DIR / filename
+    with open(fpath, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            # ===== 解析原始列 =====
+            shape = str(row['Shape']).strip()       # "square"/"circle"
+            label = str(row['Label']).strip()       # "self"/"stranger"
+            resp  = str(row['Response']).strip()    # "f"/"j"/"NA"
+            rt    = float(row['RT'])                # 反应时(秒)
+            correct_key = str(row['CorrectKey'])    # 正确按键
+
+            # ===== 计算派生字段 =====
+            condition = compute_condition(shape, label, subject_id)
+            # "Matching" 如果 label 匹配 shape 的正确配对
+            # "NonMatching" 如果不匹配
+
+            match_key = get_match_key(subject_id)   # 该被试的"匹配"键
+            response_is_match = (resp == match_key)  # 是否按了匹配键
+
+            identity = "Self" if label == "self" else "Stranger"
+
+            # ===== 每个试次返回的JSON字段 =====
+            trials.append({
+                "Shape":     shape,        # 图形 (square/circle)
+                "Label":     label,        # 标签 (self/stranger)
+                "Condition": condition,    # Matching / NonMatching
+                "Identity":  identity,     # Self / Stranger
+                "RT":        rt,           # 反应时(秒) / null
+                "Correct":   correct,      # 0 / 1 / null
+                "Response":  resp,         # f / j / NA
+                "MatchKey":  match_key,    # 匹配键(被试间变量)
+                "ResponseIsMatch": response_is_match,  # DDM上边界
+            })
+
+# 返回: {filename, groupID, subjectID, stats, trials[]}`,
+    },
+    {
+      title: 'HTTP API 端点 → JSON响应',
+      color: '#ff9800',
+      lang: 'Python (app_server.py)',
+      code: `# GET /api/files                     → 88个文件列表
+# GET /api/data/file?name=EXP...csv   → 单个被试数据
+# GET /api/data/all?group=1,2,3       → 多组聚合数据
+
+class AppHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        params = parse_qs(parsed.query)
+
+        if path == '/api/data/all':
+            groups = [int(g) for g in params['group'][0].split(',')]
+            self._json(load_all_data(groups))  # 聚合返回
+
+        elif path == '/api/data/file':
+            filename = unquote(params['name'][0])
+            self._json(load_file_data(filename))  # 单文件返回`,
+    },
+    {
+      title: '前端获取数据 & 筛选条件处理',
+      color: '#ce93d8',
+      lang: 'JavaScript (visualization_app.html)',
+      code: `// 获取数据: 聚合模式或单被试模式
+async function loadAggregatedData() {
+  const groups = Array.from(appState.selectedGroups).join(',');
+  appState.allData = await fetchAPI('/api/data/all?group=' + groups);
+  // allData = { trials: [...所有试次], summary: [...] }
+}
+
+// 筛选条件chip按钮
+function initCRFFilterChips() {
+  chip.addEventListener('click', () => {
+    checkbox.checked = !checkbox.checked;
+    updateCRFFilters();   // 更新 appState.activeFilters
+    debounceCRF(updateCRFChart, 100);  // 防抖100ms后重绘
+  });
+}
+
+// 数据过滤: 仅保留正式试次 + 有RT + 满足条件
+function getFilteredTrials() {
+  let trials = appState.allData?.trials || appState.currentData?.trials;
+  return trials.filter(t => {
+    if (t.stage !== 'formal') return false;       // 排除练习试次
+    if (t.RT === null) return false;              // 排除遗漏
+    if (!f.matching  && t.Condition === 'Matching')    return false;
+    if (!f.nonMatching && t.Condition === 'NonMatching') return false;
+    if (!f.self      && t.Identity === 'Self')    return false;
+    if (!f.stranger  && t.Identity === 'Stranger') return false;
+    if (f.correctOnly && t.Correct !== 1)        return false;
+    return true;
+  });
+}`,
+    },
+    {
+      title: 'CRF分箱计算 & SPE差异',
+      color: '#e91e63',
+      lang: 'JavaScript (visualization_app.html)',
+      code: `// 核心: CRF = 累积反应函数
+// 纵轴 = 被试按"匹配"键的比例 (DDM上边界), NOT Condition==Matching
+function computeCRF(trials, nQuantiles) {
+  const sorted = [...trials].sort((a,b) => a.RT - b.RT);
+  const qSize = Math.floor(sorted.length / nQuantiles);
+
+  for (let i = 0; i < nQuantiles; i++) {
+    const bin = sorted.slice(start, end);
+
+    // 横轴: 该分位数内所有试次的RT平均值
+    const rtMean = bin.reduce((s,t) => s + t.RT, 0) / bin.length;
+
+    // 纵轴: 该分位数内按"匹配"键的试次比例
+    const nMatchResp = bin.filter(t => t.ResponseIsMatch).length;
+    const upperProp = nMatchResp / bin.length;
+
+    bins.push({ rtMean, upperProp });
+  }
+  return bins;
+}
+
+// Self vs Stranger 分别计算CRF
+const crfSelf = computeCRF(trials.filter(t => t.Identity === 'Self'), nQ);
+const crfStranger = computeCRF(trials.filter(t => t.Identity === 'Stranger'), nQ);
+
+// SPE = Self加工效应
+// ΔP = P_Self - P_Stranger (每个分位数的匹配键比例差)
+SPE[i] = crfSelf[i].upperProp - crfStranger[i].upperProp;`,
+    },
+    {
+      title: 'Chart.js 渲染 → 最终可视化图形',
+      color: '#795548',
+      lang: 'JavaScript (visualization_app.html)',
+      code: `new Chart(ctx, {
+  type: 'scatter',  // 散点图 + showLine 连线
+  data: {
+    datasets: [
+      {
+        label: 'Self',
+        data: crfSelf.map(b => ({ x: b.rtMean, y: b.upperProp })),
+        borderColor: '#ff9800',       // 橙色 = Self
+        pointRadius: 6,
+        borderWidth: 2.5,
+        tension: 0.1,
+      },
+      {
+        label: 'Stranger',
+        data: crfStranger.map(b => ({ x: b.rtMean, y: b.upperProp })),
+        borderColor: '#2196f3',       // 蓝色 = Stranger
+        pointRadius: 6,
+        borderWidth: 2.5,
+        tension: 0.1,
+      },
+    ],
+  },
+  options: {
+    scales: {
+      x: { title: { text: 'RT (秒)' } },
+      y: { title: { text: '匹配键选择比例' }, min: 0, max: 1 },
+    },
+  },
+  plugins: [baselinePlugin],  // 绘制 y=0.5 虚线基线
+});`,
+    },
+  ];
+
+  let html = '';
+  steps.forEach((step, i) => {
+    html += `
+    <div class="src-step">
+      <div class="src-step-header" style="background:${step.color}22;border-left:3px solid ${step.color};" onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <span class="src-step-num" style="background:${step.color};">${i+1}</span>
+        <span style="color:var(--text-primary);">${step.title}</span>
+        <span style="font-size:0.7em;color:var(--text-secondary);margin-left:auto;">${step.lang}</span>
+        <span style="font-size:0.7em;">▶</span>
+      </div>
+      <pre class="src-code-block">${escapeHTML(step.code)}</pre>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ==================== TAB 4: DESIGN SPACE ANALYSIS ====================
+async function renderDesignTab(lp, rp) {
+  lp.innerHTML = `
+    <div class="section-title">实验设计参数</div>
+    <div style="font-size:0.82em;line-height:1.8;background:#0d1b2a;padding:12px;border-radius:6px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="color:#64b5f6;"><th>组别</th><th>P</th><th>T(s)</th><th>W(s)</th><th>质量</th></tr>
+        <tr><td>G1</td><td>0</td><td>0.03</td><td>0.3</td><td style="color:#f44336;">exclude</td></tr>
+        <tr><td>G2</td><td>0</td><td>0.03</td><td>0.6</td><td style="color:#f44336;">exclude</td></tr>
+        <tr><td>G3</td><td>120</td><td>0.03</td><td>0.6</td><td style="color:#ff9800;">caution</td></tr>
+        <tr><td>G4</td><td>120</td><td>0.08</td><td>0.6</td><td style="color:#4caf50;">good</td></tr>
+        <tr><td>G5</td><td>8</td><td>0.1</td><td>1.1</td><td style="color:#4caf50;">good</td></tr>
+        <tr><td>G6</td><td>120</td><td>0.5</td><td>1.5</td><td style="color:#4caf50;">good</td></tr>
+        <tr><td>G7</td><td>0</td><td>0.1</td><td>1.1</td><td style="color:#4caf50;">good</td></tr>
+        <tr><td>G8</td><td>120</td><td>0.03</td><td>0.8</td><td style="color:#4caf50;">good</td></tr>
+      </table>
+    </div>
+    <div class="section-title" style="margin-top:12px;">分析控制</div>
+    <button id="btnLoadDesignData" style="width:100%;margin-bottom:8px;">加载所有数据进行分析</button>
+    <div id="designDataInfo" style="font-size:0.75em;color:#90a4ae;margin-bottom:8px;"></div>
+    <div class="filter-row">
+      <label><input type="checkbox" id="designQualityGood" checked onchange="updateDesignCharts()"> Good</label>
+      <label><input type="checkbox" id="designQualityCaution" checked onchange="updateDesignCharts()"> Caution</label>
+      <label><input type="checkbox" id="designQualityExclude" checked onchange="updateDesignCharts()"> Exclude</label>
+    </div>
+  `;
+  rp.innerHTML = `
+    <div class="chart-container" style="flex:1;">
+      <div class="section-title">P/T/W参数对决策偏差的影响</div>
+      <canvas id="designBubbleChart" style="max-height:400px;"></canvas>
+    </div>
+    <div class="chart-container" style="flex:1;">
+      <div class="section-title">各组数据质量与敏感性分析</div>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;"><canvas id="designQualityChart" style="max-height:280px;"></canvas></div>
+        <div style="flex:1;"><canvas id="designSensitivityChart" style="max-height:280px;"></canvas></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btnLoadDesignData').addEventListener('click', async () => {
+    document.getElementById('designDataInfo').textContent = '加载中...';
+    appState.allData = await fetchAPI('/api/data/all');
+    document.getElementById('designDataInfo').textContent =
+      `已加载 ${appState.allData.summary.length} 文件, ${appState.allData.trials.length} 试次`;
+    updateDesignCharts();
+  });
+}
+
+function getDesignGroupSummary() {
+  if (!appState.allData) return [];
+  const summary = appState.allData.summary;
+  const qualityMap = {1:'exclude',2:'exclude',3:'caution',4:'good',5:'good',6:'good',7:'good',8:'good'};
+  const designMap = {1:{P:0,T:30,W:300},2:{P:0,T:30,W:600},3:{P:120,T:30,W:600},4:{P:120,T:80,W:600},
+    5:{P:8,T:100,W:1100},6:{P:120,T:500,W:1500},7:{P:0,T:100,W:1100},8:{P:120,T:30,W:800}};
+  const groups = {};
+  summary.forEach(s => {
+    const gid = s.groupID;
+    if (!groups[gid]) {
+      const d = designMap[gid];
+      groups[gid] = { groupID: gid, P: d.P, T: d.T, W: d.W, quality: qualityMap[gid],
+        totalTrials: 0, totalFormal: 0, totalResponses: 0, totalCorrect: 0, nSubjects: 0 };
+    }
+    groups[gid].totalTrials += s.total;
+    groups[gid].totalFormal += s.formal;
+    groups[gid].totalResponses += s.responses;
+    groups[gid].totalCorrect += s.correct;
+    groups[gid].nSubjects++;
+  });
+  return Object.values(groups).map(g => ({
+    ...g,
+    omissionRate: g.totalFormal > 0 ? ((g.totalFormal - g.totalResponses) / g.totalFormal * 100) : 0,
+    accuracy: g.totalResponses > 0 ? (g.totalCorrect / g.totalResponses * 100) : 0,
+  }));
+}
+
+function updateDesignCharts() {
+  if (!appState.allData) return;
+  const summary = getDesignGroupSummary();
+  const showGood = document.getElementById('designQualityGood')?.checked ?? true;
+  const showCaution = document.getElementById('designQualityCaution')?.checked ?? true;
+  const showExclude = document.getElementById('designQualityExclude')?.checked ?? true;
+  const filtered = summary.filter(g => {
+    if (g.quality === 'good' && !showGood) return false;
+    if (g.quality === 'caution' && !showCaution) return false;
+    if (g.quality === 'exclude' && !showExclude) return false;
+    return true;
+  });
+
+  renderDesignBubbleChart(filtered);
+  renderDesignQualityChart(filtered);
+  renderDesignSensitivityChart(filtered);
+}
+
+let designBubbleInst = null;
+function renderDesignBubbleChart(groups) {
+  const ctx = document.getElementById('designBubbleChart').getContext('2d');
+  if (designBubbleInst) designBubbleInst.destroy();
+  const colors = {good:'#4caf50',caution:'#ff9800',exclude:'#f44336'};
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+  designBubbleInst = new Chart(ctx, {
+    type: 'bubble',
+    data: {
+      datasets: groups.map(g => ({
+        label: `G${g.groupID} [${g.quality}]`,
+        data: [{x: g.T, y: g.W, r: Math.max(8, g.P * 0.15)}],
+        backgroundColor: colors[g.quality] + '88',
+        borderColor: colors[g.quality],
+        borderWidth: 2,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const g = groups[ctx.datasetIndex];
+              return `G${g.groupID}: P=${g.P}, T=${g.T}ms, W=${g.W}ms, ACC=${g.accuracy.toFixed(1)}%, Omission=${g.omissionRate.toFixed(1)}%`;
+            }
+          }
+        },
+        legend: { labels: { color: legendColor } }
+      },
+      scales: {
+        x: { title: { display: true, text: 'T (ms)', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { title: { display: true, text: 'W (ms)', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } }
+      }
+    }
+  });
+}
+
+let designQualityInst = null;
+function renderDesignQualityChart(groups) {
+  const ctx = document.getElementById('designQualityChart').getContext('2d');
+  if (designQualityInst) designQualityInst.destroy();
+  const colors = {good:'#4caf50',caution:'#ff9800',exclude:'#f44336'};
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+  designQualityInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: groups.map(g => `G${g.groupID}`),
+      datasets: [
+        { label: '正确率 %', data: groups.map(g => g.accuracy), backgroundColor: groups.map(g => colors[g.quality]), yAxisID: 'y' },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: legendColor } }, title: { display: true, text: '各组正确率', color: legendColor } },
+      scales: {
+        y: { title: { display: true, text: '正确率 %', color: textColor }, max: 100, ticks: { color: textColor }, grid: { color: gridColor } },
+        x: { ticks: { color: textColor }, grid: { color: gridColor } }
+      }
+    }
+  });
+}
+
+let designSensitivityInst = null;
+function renderDesignSensitivityChart(groups) {
+  const ctx = document.getElementById('designSensitivityChart').getContext('2d');
+  if (designSensitivityInst) designSensitivityInst.destroy();
+  const colors = {good:'#4caf50',caution:'#ff9800',exclude:'#f44336'};
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+  designSensitivityInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: groups.map(g => `G${g.groupID}`),
+      datasets: [
+        { label: '遗漏率 %', data: groups.map(g => g.omissionRate), backgroundColor: groups.map(g => colors[g.quality] + '88'), borderColor: groups.map(g => colors[g.quality]), borderWidth: 1 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: legendColor } }, title: { display: true, text: '遗漏率 (数据质量)', color: legendColor } },
+      scales: {
+        y: { title: { display: true, text: '遗漏率 %', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+        x: { ticks: { color: textColor }, grid: { color: gridColor } }
+      }
+    }
+  });
+}
+
+// ==================== INIT ====================
+async function init() {
+  initTheme();
+  generateGroupOptions();
+  initTabs();
+  document.getElementById('globalGroupFilter').addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (v === 'all') [1,2,3,4,5,6,7,8].forEach(x => appState.selectedGroups.add(x));
+    else {
+      appState.selectedGroups.clear();
+      appState.selectedGroups.add(parseInt(v));
+    }
+    if (appState.currentTab === 'tab-data') renderFileList();
+    if (appState.currentTab === 'tab-visualization') updateCRFGroupTabStyles();
+  });
+  renderTabContent();
+}
+
+init();
+</script>
+</body>
+</html>

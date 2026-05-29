@@ -32,12 +32,20 @@ for gid in sorted(group_subjects.index):
 df_f = df_all[df_all["stage"] == "formal"].copy()
 print(f"\n过滤 stage='formal' 后: {len(df_f)} 行")
 
-matching_mask = (
-    ((df_f["Shape"] == "circle") & (df_f["Label"] == "self"))
-    | ((df_f["Shape"] == "square") & (df_f["Label"] == "stranger"))
-)
+# 标记 Matching 条件（基于 subjectID 奇偶性翻转）
+odd_mask = (df_f["subjectID"] % 2 == 1)
+mask_odd = ((df_f["Shape"] == "circle") & (df_f["Label"] == "self")) | \
+           ((df_f["Shape"] == "square") & (df_f["Label"] == "stranger"))
+mask_even = ((df_f["Shape"] == "square") & (df_f["Label"] == "self")) | \
+            ((df_f["Shape"] == "circle") & (df_f["Label"] == "stranger"))
+matching_mask = np.where(odd_mask, mask_odd, mask_even)
 df_match = df_f[matching_mask].copy()
 print(f"过滤 Matching 试次后: {len(df_match)} 行")
+
+# 再过滤 NonMatching 试次（供 Python_HDDM_Nonmatching 参考使用）
+nonmatching_mask = np.where(odd_mask, mask_even, mask_odd)
+df_nonmatch = df_f[nonmatching_mask].copy()
+print(f"NonMatching 试次: {len(df_nonmatch)} 行")
 
 df_match["identity"] = df_match["Label"].map({"self": 1, "stranger": 0})
 df_match["RT_num"] = pd.to_numeric(df_match["RT"], errors="coerce")
