@@ -59,8 +59,27 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(-
 .panel-left { max-width: 360px; min-width: 300px; border-right: 1px solid var(--border); background: var(--bg-tertiary); }
 .panel-right { flex: 2; display: flex; flex-direction: column; }
 .viz-area { flex: 1; display: flex; flex-direction: column; gap: 12px; }
-.chart-container { background: var(--bg-secondary); border-radius: 8px; padding: 12px; border: 1px solid var(--border); position: relative; }
-.chart-container canvas { max-height: 350px; }
+.chart-container { background: var(--bg-secondary); border-radius: 8px; padding: 12px; border: 1px solid var(--border); position: relative; display: flex; flex-direction: column; }
+.chart-container canvas { max-height: 350px; min-height: 200px; }
+.design-row { display: flex; gap: 8px; min-height: 380px; }
+.design-row-single { min-height: 260px; }
+.design-bubble-col { flex: 3; min-height: 380px; display: flex; flex-direction: column; }
+.design-dist-col { flex: 1; display: flex; flex-direction: column; gap: 4px; min-height: 380px; }
+.design-trend-row { display: flex; gap: 8px; min-height: 230px; }
+.three-d-canvas { width: 100%; cursor: grab; border-radius: 4px; transition: opacity 0.3s ease; }
+.three-d-canvas.transitioning { opacity: 0.5; }
+.three-d-canvas:active { cursor: grabbing; }
+.three-d-controls { display: flex; align-items: center; gap: 10px; font-size: 0.75em; color: var(--text-secondary); margin-top: 6px; flex-wrap: wrap; }
+.three-d-controls input[type="range"] { width: 80px; height: 4px; padding: 0; accent-color: var(--accent); }
+.three-d-controls label { display: flex; align-items: center; gap: 4px; }
+.three-d-face { min-height: 100px; border: 1px solid var(--border); border-radius: 4px; position: relative; background: var(--bg-card); }
+.three-d-legend { font-size: 0.7em; color: var(--text-secondary); margin-top: 4px; line-height: 1.6; }
+.three-d-legend .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+.three-d-tooltip { position: absolute; pointer-events: none; background: rgba(0,0,0,0.82); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 0.75em; white-space: nowrap; z-index: 999; display: none; line-height: 1.5; }
+.three-d-tooltip b { color: #ffcc80; }
+.filter-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72em; font-weight: 600; margin-left: 8px; transition: all 0.3s ease; }
+.filter-badge.active { background: rgba(255,152,0,0.2); color: #ff9800; border: 1px solid rgba(255,152,0,0.4); }
+.filter-badge.all { background: rgba(76,175,80,0.15); color: #4caf50; border: 1px solid rgba(76,175,80,0.3); }
 .section-title { font-size: 1em; color: var(--accent); margin-bottom: 10px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .section-title::before { content: ''; width: 4px; height: 18px; background: var(--accent); border-radius: 2px; }
 .data-preview { max-height: 300px; overflow-y: auto; background: var(--bg-card); border-radius: 6px; border: 1px solid var(--border); }
@@ -189,6 +208,21 @@ let appState = {
   theme: 'dark',
 };
 
+Chart.register({
+  id: 'globalCanvasBg',
+  beforeDraw(chart) {
+    const { ctx, chartArea, width, height } = chart;
+    ctx.save();
+    ctx.fillStyle = appState.theme === 'light' ? '#ffffff' : '#1a2a3a';
+    ctx.fillRect(0, 0, width, height);
+    if (chartArea) {
+      ctx.fillStyle = appState.theme === 'light' ? '#f8f9fb' : '#0d1b2a';
+      ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+    }
+    ctx.restore();
+  }
+});
+
 // 主题切换功能
 function initTheme() {
   const savedTheme = localStorage.getItem('viz-theme') || 'dark';
@@ -220,7 +254,8 @@ function updateChartTheme() {
   const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
   const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
   
-  [rtChart, crfChartInst, speChartInst, designBubbleInst, designQualityInst, designSensitivityInst].forEach(chart => {
+  [rtChart, crfChartInst, speChartInst, designBubbleInst, designQualityInst, designSensitivityInst,
+   designWDistInst, designTDistInst, designPVizInst, designTVizInst, designWVizInst, conditionBreakdownChart, designCompareRTInst, designCompareMetricInst].forEach(chart => {
     if (chart && chart.options) {
       if (chart.options.scales) {
         Object.values(chart.options.scales).forEach(scale => {
@@ -590,15 +625,26 @@ async function renderDataTab(lp, rp) {
     </div>
   `;
   rp.innerHTML = `
-    <div class="chart-container">
-      <div class="section-title">数据预览 <span id="previewTitle" style="font-size:0.8em;color:#90a4ae;"></span></div>
+    <div class="chart-container" style="flex:1;">
+      <div class="section-title">数据预览 — 试次级别查看 <span id="previewTitle" style="font-size:0.8em;color:var(--text-secondary);"></span></div>
       <div class="data-preview" id="dataPreview">
-        <div style="padding:20px;text-align:center;color:#90a4ae;">请从左侧选择数据文件</div>
+        <div style="padding:20px;text-align:center;color:var(--text-secondary);">请从左侧选择数据文件</div>
       </div>
     </div>
-    <div class="chart-container">
-      <div class="section-title">RT分布直方图</div>
-      <canvas id="rtHistogram" style="max-height:280px;"></canvas>
+    <div class="chart-container" style="flex:1;">
+      <div class="section-title">RT分布 — Self vs Stranger (ggcube 照明分色风格)</div>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:2;"><canvas id="rtHistogram"></canvas></div>
+        <div style="flex:1;font-size:0.72em;color:var(--text-secondary);line-height:1.8;" id="rtSummaryStats">
+          <div style="text-align:center;color:var(--text-secondary);">选择文件后显示统计数据</div>
+        </div>
+      </div>
+    </div>
+    <div class="chart-container" style="flex:1;min-height:200px;max-height:240px;">
+      <div class="section-title">条件分解 — Matching/NonMatching × Self/Stranger</div>
+      <div style="position:relative;height:calc(100% - 30px);">
+        <canvas id="conditionBreakdownChart"></canvas>
+      </div>
     </div>
   `;
 
@@ -681,42 +727,381 @@ function renderDataPreview() {
 function updateDataStats() {
   if (!appState.currentData) return;
   const s = appState.currentData.stats;
+  const trials = appState.currentData.trials;
+  const formal = trials.filter(t => t.stage === 'formal');
+  const responses = formal.filter(t => t.RT !== null);
+  const correct = responses.filter(t => t.Correct === 1);
+  const matching = formal.filter(t => t.Condition === 'Matching');
+  const nonMatching = formal.filter(t => t.Condition === 'NonMatching');
+  const selfTrials = formal.filter(t => t.Identity === 'Self');
+  const strangerTrials = formal.filter(t => t.Identity === 'Stranger');
+  const selfAcc = selfTrials.filter(t => t.Correct === 1).length / Math.max(1, selfTrials.filter(t => t.RT !== null).length) * 100;
+  const strangerAcc = strangerTrials.filter(t => t.Correct === 1).length / Math.max(1, strangerTrials.filter(t => t.RT !== null).length) * 100;
+
   document.getElementById('dataStats').innerHTML = `
     <div class="stat-card"><div class="value">${s.total}</div><div class="label">总试次</div></div>
     <div class="stat-card"><div class="value">${s.formal}</div><div class="label">正式试次</div></div>
     <div class="stat-card"><div class="value">${s.omissionRate}%</div><div class="label">遗漏率</div></div>
     <div class="stat-card"><div class="value">${s.accuracy}%</div><div class="label">正确率</div></div>
+    <div class="stat-card"><div class="value" style="color:#ff9800;">${selfAcc.toFixed(1)}%</div><div class="label">Self正确率</div></div>
+    <div class="stat-card"><div class="value" style="color:#2196f3;">${strangerAcc.toFixed(1)}%</div><div class="label">Stranger正确率</div></div>
+    <div class="stat-card"><div class="value">${matching.length}</div><div class="label">Matching试次</div></div>
+    <div class="stat-card"><div class="value">${nonMatching.length}</div><div class="label">NonMatching</div></div>
   `;
 }
 
 let rtChart = null;
+let conditionBreakdownChart = null;
+
+function gaussianKDE(data, bandwidth, nPoints) {
+  const sorted = [...data].sort((a, b) => a - b);
+  const n = sorted.length;
+  if (n < 2) return [];
+  const xMin = sorted[0], xMax = sorted[n - 1];
+  const xRange = xMax - xMin || 0.001;
+  const h = bandwidth || (1.06 * Math.sqrt(variance(data)) * Math.pow(n, -0.2));
+  const points = nPoints || 100;
+  const result = [];
+  for (let i = 0; i <= points; i++) {
+    const x = xMin - 2 * h + (xRange + 4 * h) * i / points;
+    let density = 0;
+    for (let j = 0; j < n; j++) {
+      const z = (x - sorted[j]) / h;
+      density += Math.exp(-0.5 * z * z);
+    }
+    density /= (n * h * Math.sqrt(2 * Math.PI));
+    result.push({ x, y: density });
+  }
+  return result;
+}
+
+function variance(arr) {
+  const m = arr.reduce((s, v) => s + v, 0) / arr.length;
+  return arr.reduce((s, v) => s + (v - m) * (v - m), 0) / (arr.length - 1);
+}
+
 function renderRTDistribution() {
   if (!appState.currentData) return;
-  const rts = appState.currentData.trials.filter(t => t.RT !== null && t.stage === 'formal').map(t => t.RT);
-  if (rts.length === 0) return;
-  const bins = 30;
-  const min = Math.min(...rts), max = Math.max(...rts);
+  const formal = appState.currentData.trials.filter(t => t.RT !== null && t.stage === 'formal');
+  if (formal.length === 0) return;
+
+  const selfRTs = formal.filter(t => t.Identity === 'Self').map(t => t.RT);
+  const strangerRTs = formal.filter(t => t.Identity === 'Stranger').map(t => t.RT);
+  const allRTs = formal.map(t => t.RT);
+  const bins = 25;
+  const min = Math.min(...allRTs), max = Math.max(...allRTs);
   const bw = (max - min) / bins;
-  const hist = new Array(bins).fill(0);
-  rts.forEach(v => { const idx = Math.min(Math.floor((v-min)/bw), bins-1); hist[idx]++; });
+
+  const hist = (data) => {
+    const h = new Array(bins).fill(0);
+    data.forEach(v => { const idx = Math.min(Math.floor((v-min)/bw), bins-1); h[idx]++; });
+    return h;
+  };
 
   const ctx = document.getElementById('rtHistogram').getContext('2d');
   if (rtChart) rtChart.destroy();
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+
+  const kdeSelf = gaussianKDE(selfRTs, null, 80);
+  const kdeStranger = gaussianKDE(strangerRTs, null, 80);
+  const histMax = Math.max(...hist(selfRTs), ...hist(strangerRTs), 1);
+  const kdeScale = histMax / Math.max(kdeSelf.reduce((m,d)=>Math.max(m,d.y),0), kdeStranger.reduce((m,d)=>Math.max(m,d.y),0), 0.001);
+
   rtChart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: Array.from({length:bins}, (_,i) => (min+i*bw).toFixed(2)),
-      datasets: [{ label: '频次', data: hist, backgroundColor: 'rgba(100,181,246,0.5)', borderColor: '#64b5f6', borderWidth: 1 }]
+      datasets: [
+        { label: 'Self', data: hist(selfRTs), backgroundColor: 'rgba(255,152,0,0.5)', borderColor: '#ff9800', borderWidth: 1, order: 1 },
+        { label: 'Stranger', data: hist(strangerRTs), backgroundColor: 'rgba(33,150,243,0.5)', borderColor: '#2196f3', borderWidth: 1, order: 1 },
+        { label: 'Self KDE', data: kdeSelf.map(d => ({x: d.x, y: d.y * kdeScale})), type: 'line', borderColor: '#ff9800', backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 0, tension: 0.3, order: 0, fill: false },
+        { label: 'Stranger KDE', data: kdeStranger.map(d => ({x: d.x, y: d.y * kdeScale})), type: 'line', borderColor: '#2196f3', backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 0, tension: 0.3, order: 0, fill: false },
+      ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: textColor, usePointStyle: true, filter: item => !item.text.includes('KDE') } },
+        tooltip: { mode: 'index', intersect: false }
+      },
       scales: {
-        x: { title: { display: true, text: 'RT (秒)', color: appState.theme === 'light' ? '#5a6c7d' : '#90a4ae' }, ticks: { color: appState.theme === 'light' ? '#5a6c7d' : '#90a4ae', maxTicksLimit: 15 }, grid: { color: appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)' } },
-        y: { title: { display: true, text: '频次', color: appState.theme === 'light' ? '#5a6c7d' : '#90a4ae' }, ticks: { color: appState.theme === 'light' ? '#5a6c7d' : '#90a4ae' }, grid: { color: appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)' } }
+        x: { stacked: false, title: { display: true, text: 'RT (秒)', color: textColor }, ticks: { color: textColor, maxTicksLimit: 12 }, grid: { color: gridColor } },
+        y: { stacked: false, title: { display: true, text: '试次频数', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } }
       }
     }
   });
+
+  // ggcube 风格: RT统计摘要
+  const stats = (arr) => {
+    const sorted = [...arr].sort((a,b)=>a-b);
+    const n = sorted.length;
+    const mean = arr.reduce((s,v)=>s+v,0)/n;
+    const median = n%2===1 ? sorted[(n-1)/2] : (sorted[n/2-1]+sorted[n/2])/2;
+    return {mean, median, n};
+  };
+  const selfStats = stats(selfRTs);
+  const strangerStats = stats(strangerRTs);
+  document.getElementById('rtSummaryStats').innerHTML = `
+    <div style="color:#ff9800;font-weight:600;">● Self (n=${selfStats.n})</div>
+    <div>Mean: <b>${selfStats.mean.toFixed(2)}s</b></div>
+    <div>Median: <b>${selfStats.median.toFixed(2)}s</b></div>
+    <div style="margin-top:8px;color:#2196f3;font-weight:600;">● Stranger (n=${strangerStats.n})</div>
+    <div>Mean: <b>${strangerStats.mean.toFixed(2)}s</b></div>
+    <div>Median: <b>${strangerStats.median.toFixed(2)}s</b></div>
+    <div style="margin-top:8px;color:var(--accent);">
+      Δ Mean: <b>${(selfStats.mean - strangerStats.mean).toFixed(2)}s</b> | Δ Median: <b>${(selfStats.median - strangerStats.median).toFixed(2)}s</b>
+    </div>
+  `;
+
+  renderConditionBreakdown(selfRTs, strangerRTs);
+}
+
+function renderConditionBreakdown(selfRTs, strangerRTs) {
+  const canvas = document.getElementById('conditionBreakdownChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (conditionBreakdownChart) conditionBreakdownChart.destroy();
+
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  const cStats = (arr) => {
+    if (arr.length === 0) return { mean: 0, sem: 0, n: 0 };
+    const n = arr.length;
+    const mean = arr.reduce((s, v) => s + v, 0) / n;
+    const variance = arr.reduce((s, v) => s + (v - mean) * (v - mean), 0) / (n - 1 || 1);
+    return { mean, sem: Math.sqrt(variance / n), n };
+  };
+
+  const formal = appState.currentData.trials.filter(t => t.RT !== null && t.stage === 'formal');
+  const categories = [
+    { key: 'Matching×Self', filter: t => t.Condition === 'Matching' && t.Identity === 'Self', color: '#4caf50' },
+    { key: 'Matching×Stranger', filter: t => t.Condition === 'Matching' && t.Identity === 'Stranger', color: '#81c784' },
+    { key: 'NonMatching×Self', filter: t => t.Condition === 'NonMatching' && t.Identity === 'Self', color: '#f44336' },
+    { key: 'NonMatching×Stranger', filter: t => t.Condition === 'NonMatching' && t.Identity === 'Stranger', color: '#e57373' },
+  ];
+
+  const items = categories.map(c => {
+    const subset = formal.filter(c.filter);
+    const rts = subset.map(t => t.RT);
+    const correct = subset.filter(t => t.Correct === 1).length;
+    const accuracy = subset.length > 0 ? (correct / subset.length * 100) : 0;
+    const stats = cStats(rts);
+    return { key: c.key, ...stats, accuracy, color: c.color };
+  });
+
+  conditionBreakdownChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: items.map(i => i.key),
+      datasets: [
+        {
+          label: 'Mean RT (s)',
+          data: items.map(i => i.mean),
+          backgroundColor: items.map(i => withAlpha(i.color, 0.65)),
+          borderColor: items.map(i => i.color),
+          borderWidth: 1.5,
+          yAxisID: 'y',
+          order: 1,
+        },
+        {
+          label: 'Accuracy %',
+          data: items.map(i => i.accuracy),
+          type: 'line',
+          borderColor: textColor,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 5,
+          pointBackgroundColor: items.map(i => i.color),
+          tension: 0.3,
+          yAxisID: 'y1',
+          order: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: legendColor, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const i = items[ctx.dataIndex];
+              if (ctx.dataset.yAxisID === 'y') {
+                return [`Mean RT: ${i.mean.toFixed(3)}s`, `SEM: ±${i.sem.toFixed(3)}s`, `n=${i.n}`];
+              }
+              return `Accuracy: ${i.accuracy.toFixed(1)}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor, display: false } },
+        y: {
+          type: 'linear', position: 'left',
+          title: { display: true, text: 'RT (秒)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor }
+        },
+        y1: {
+          type: 'linear', position: 'right',
+          title: { display: true, text: '正确率 %', color: textColor },
+          min: 0, max: 100,
+          ticks: { color: textColor }, grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+// ==================== HSL 颜色工具 (源自 ggcube 光照模型) ====================
+// ggcube 使用 HSL/HSV 颜色空间进行光照混合 (blend_light_with_colors)
+// 这里实现等效的 JavaScript 版本，用于感知均匀的颜色操作
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return { r, g, b };
+}
+
+function rgbToHex(r, g, b) {
+  const toHex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return { h, s, l };
+}
+
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+}
+
+// ggcube 的 blend_light_with_colors 概念: 在 HSL 空间调整亮度
+// 用于生成置信区间带颜色 (lighten/darken while preserving hue+saturation)
+function hslBlend(hexColor, luminanceAdjust) {
+  const { r, g, b } = hexToRgb(hexColor);
+  const { h, s, l } = rgbToHsl(r, g, b);
+  const newL = Math.max(0, Math.min(1, l + luminanceAdjust));
+  const result = hslToRgb(h, s, newL);
+  return rgbToHex(result.r, result.g, result.b);
+}
+
+// ggcube 透传 alpha 混合: 前景面板风格
+function withAlpha(hexColor, alpha) {
+  const { r, g, b } = hexToRgb(hexColor);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// 多项式拟合 (最小二乘法: y = a0 + a1*x + a2*x^2)
+function polyFit(xs, ys, degree = 2) {
+  const n = xs.length;
+  if (n < degree + 1) return null;
+
+  // Vandermonde matrix
+  const A = [];
+  for (let i = 0; i < n; i++) {
+    const row = [];
+    for (let d = 0; d <= degree; d++) {
+      row.push(Math.pow(xs[i], d));
+    }
+    A.push(row);
+  }
+
+  // A^T * A * coeff = A^T * y
+  const k = degree + 1;
+  const AT = new Array(k).fill(null).map(() => new Array(n).fill(0));
+  for (let i = 0; i < k; i++) {
+    for (let j = 0; j < n; j++) {
+      AT[i][j] = A[j][i];
+    }
+  }
+
+  // ATA = AT * A (k×k)
+  const ATA = new Array(k).fill(null).map(() => new Array(k).fill(0));
+  for (let i = 0; i < k; i++) {
+    for (let j = 0; j < k; j++) {
+      let sum = 0;
+      for (let t = 0; t < n; t++) sum += AT[i][t] * A[t][j];
+      ATA[i][j] = sum;
+    }
+  }
+
+  // ATy = AT * y (k×1)
+  const ATy = new Array(k).fill(0);
+  for (let i = 0; i < k; i++) {
+    for (let j = 0; j < n; j++) {
+      ATy[i] += AT[i][j] * ys[j];
+    }
+  }
+
+  // Gauss elimination
+  const aug = ATA.map((row, i) => [...row, ATy[i]]);
+  for (let i = 0; i < k; i++) {
+    let pivot = i;
+    for (let j = i + 1; j < k; j++) {
+      if (Math.abs(aug[j][i]) > Math.abs(aug[pivot][i])) pivot = j;
+    }
+    [aug[i], aug[pivot]] = [aug[pivot], aug[i]];
+    const div = aug[i][i];
+    if (Math.abs(div) < 1e-12) continue;
+    for (let j = i; j <= k; j++) aug[i][j] /= div;
+    for (let j = i + 1; j < k; j++) {
+      const factor = aug[j][i];
+      for (let t = i; t <= k; t++) aug[j][t] -= factor * aug[i][t];
+    }
+  }
+  const coeffs = new Array(k).fill(0);
+  for (let i = k - 1; i >= 0; i--) {
+    coeffs[i] = aug[i][k];
+    for (let j = i + 1; j < k; j++) {
+      coeffs[i] -= aug[i][j] * coeffs[j];
+    }
+  }
+  return coeffs;
+}
+
+function predictPoly(coeffs, x) {
+  let y = 0;
+  for (let d = 0; d < coeffs.length; d++) {
+    y += coeffs[d] * Math.pow(x, d);
+  }
+  return y;
 }
 
 // ==================== TAB 3: CRF VISUALIZATION ====================
@@ -735,8 +1120,8 @@ function renderRTDistribution() {
  *   → computeCRF(trials, nQuantiles) 分箱计算
  *     1. 按 RT 升序排序
  *     2. 等宽分桶 nQuantiles 个 (最后一个桶取余数)
- *     3. 每桶计算: rtMean(平均值), upperProp(Matching比例)
- *   → Chart.js scatter-with-lines 渲染
+ *     3. 每桶计算: rtMean(平均值), upperProp(Matching比例), sem
+ *   → Chart.js scatter-with-lines + confidence bands + trend fit 渲染
  *
  * 关键数据字段:
  *   - RT: 反应时(秒), 数值型, null表示遗漏
@@ -822,14 +1207,31 @@ async function renderVisualizationTab(lp, rp) {
       <span id="quantileVal" style="color:var(--accent);">5</span>
     </div>
 
-    <div class="section-title">CRF说明</div>
-    <div style="font-size:0.75em;color:var(--text-secondary);line-height:1.6;">
-      横轴: RT均值(秒) 按分位数分箱<br>
-      纵轴: 选择"匹配"键的比例 (DDM上边界)<br>
-      Matching=正确匹配键 | NonMatching=错误匹配键<br>
-      橙色 = Self | 蓝色 = Stranger<br>
-      --- 虚线 = 无偏向基线 (P=0.5)<br>
-      <span style="color:var(--accent);">基于Sui(2012) Self-Matching Task</span>
+    <div class="section-title">CRF方法说明</div>
+    <div style="font-size:0.75em;color:var(--text-secondary);line-height:1.7;background:var(--bg-card);padding:10px;border-radius:6px;border:1px solid var(--border);">
+      <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">▎累积反应函数 (CRF) 可视化</div>
+      <div><b>图表类型:</b> 分位数分箱的CRF散点图 + 二次多项式趋势线</div>
+      <div><b>横轴:</b> 每个RT分位数箱的均值反应时间（秒）</div>
+      <div><b>纵轴:</b> 被试选择"匹配键"的比例 P(Match) ∈ [0,1]</div>
+      <div style="margin-top:4px;"><b>数据系列:</b></div>
+      <div>🟠 <b>Self</b> — 自我标签试次 | 🔵 <b>Stranger</b> — 生人标签试次</div>
+      <div style="margin-top:4px;"><b>视觉元素:</b></div>
+      <div>• 彩色半透明竖条 = 各分位箱的RT密度分布背景</div>
+      <div>• 虚线趋势线 = 二次多项式拟合曲线</div>
+      <div>• 阴影带 = 95%置信区间 (SEM × 1.96)</div>
+      <div>• 竖线误差棒 = 每个bin的±1.96 SEM范围</div>
+      <div style="margin-top:4px;"><b>基线说明:</b></div>
+      <div>--- 水平虚线 = 无偏向基线 (P=0.5)，表示被试随机选择</div>
+      <div style="margin-top:4px;"><b>理论依据:</b></div>
+      <div>基于Sui(2012) Self-Matching Task，CRF反映证据积累的时间动态过程。DDM的上边界命中概率随RT增大而上升。</div>
+    </div>
+    <div style="font-size:0.75em;color:var(--text-secondary);line-height:1.7;background:var(--bg-card);padding:10px;border-radius:6px;border:1px solid var(--border);margin-top:8px;">
+      <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">▎自我加工效应 (SPE) 图表</div>
+      <div><b>图表类型:</b> SPE差异散点图 + 趋势线</div>
+      <div><b>纵轴:</b> SPE = P(Self) − P(Stranger)</div>
+      <div><b>解读:</b> SPE &gt; 0 表示自我偏向，SPE &lt; 0 表示生人偏向。零基线为无差异参考线。</div>
+      <div style="margin-top:4px;"><b>交互方式:</b></div>
+      <div>• 🖱 悬停查看精确数值 | • 📊 左侧筛选条件即时更新 | • 🎚 拖动分位数滑块调整分箱数量</div>
     </div>
   `;
   rp.innerHTML = `
@@ -1106,9 +1508,10 @@ function getFilteredTrials() {
   return result;
 }
 
-// === CRF计算 ===
+// === CRF计算 (增强版: 含SEM和SD) ===
 // upperProp = 被试按"匹配"键的比例 (DDM上边界), 不是Condition==Matching
 // 即使Matching条件中,被试也可能按错键(按不匹配键), 比例不会是100%
+// 参考 ggcube stat_smooth_3d 的 CI surface 设计, 返回 SEM 用于置信区间带
 function computeCRF(trials, nQuantiles) {
   if (trials.length < nQuantiles * 2) return null;
   const sorted = [...trials].sort((a, b) => a.RT - b.RT);
@@ -1118,13 +1521,20 @@ function computeCRF(trials, nQuantiles) {
   let start = 0;
   for (let i = 0; i < nQuantiles; i++) {
     const end = i === nQuantiles - 1 ? n : start + qSize;
-    let rtSum = 0, nMatchResp = 0;
+    let rtSum = 0, rtSumSq = 0, nMatchResp = 0;
     for (let j = start; j < end; j++) {
       rtSum += sorted[j].RT;
+      rtSumSq += sorted[j].RT * sorted[j].RT;
       if (sorted[j].ResponseIsMatch) nMatchResp++;
     }
     const count = end - start;
-    bins.push({ rtMean: rtSum / count, upperProp: nMatchResp / count, n: count });
+    const rtMean = rtSum / count;
+    const rtVar = (rtSumSq / count) - (rtMean * rtMean);
+    const rtSD = Math.sqrt(Math.max(0, rtVar));
+    const upperProp = nMatchResp / count;
+    // 二项比例的标准误差: sqrt(p*(1-p)/n)
+    const sem = Math.sqrt(upperProp * (1 - upperProp) / count);
+    bins.push({ rtMean, rtSD, upperProp, sem, n: count });
     start = end;
   }
   return bins;
@@ -1139,12 +1549,12 @@ function clearCRFCharts() {
   if (speChartInst) { speChartInst.destroy(); speChartInst = null; }
 }
 
-// === 主绘图函数 (优化版) ===
+// === 主绘图函数 (优化版: 含置信区间带和趋势拟合线) ===
+// 参考 ggcube 的 CI surface 和多层geom叠加设计
 function updateCRFChart() {
   const loadingEl = document.getElementById('crfLoading');
   if (loadingEl) loadingEl.style.display = '';
 
-  // 使用 requestAnimationFrame 避免阻塞UI
   requestAnimationFrame(() => {
     const trials = getFilteredTrials();
     if (trials.length === 0) {
@@ -1159,7 +1569,6 @@ function updateCRFChart() {
     const selfTrials = trials.filter(t => t.Identity === 'Self');
     const strangerTrials = trials.filter(t => t.Identity === 'Stranger');
     
-    // 缓存用于后续对比
     _crfCache = { selfTrials: selfTrials.length, strangerTrials: strangerTrials.length, nQ };
 
     const crfSelf = computeCRF(selfTrials, nQ);
@@ -1170,8 +1579,38 @@ function updateCRFChart() {
 
     const ctx = document.getElementById('crfChart').getContext('2d');
 
+    const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+    const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+    const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+    // 构建数据集: 原始CRF点 + 趋势拟合线
     const datasets = [];
+
+    // ===== Self 条件 =====
     if (crfSelf) {
+      // 趋势拟合线 (先绘制, 在下方)
+      const selfXs = crfSelf.map(b => b.rtMean);
+      const selfYs = crfSelf.map(b => b.upperProp);
+      const selfFit = polyFit(selfXs, selfYs, 2);
+      if (selfFit) {
+        const fitPoints = [];
+        const xMin = selfXs[0], xMax = selfXs[selfXs.length - 1];
+        const xRange = xMax - xMin || 0.001;
+        for (let i = 0; i <= 60; i++) {
+          const x = xMin + (xRange * i / 60);
+          fitPoints.push({ x, y: predictPoly(selfFit, x) });
+        }
+        datasets.push({
+          label: 'Self trend',
+          data: fitPoints,
+          borderColor: withAlpha('#ff9800', 0.5),
+          backgroundColor: 'transparent',
+          pointRadius: 0, borderWidth: 1.5, borderDash: [5, 3], tension: 0, showLine: true,
+          order: 3,
+        });
+      }
+
+      // 原始CRF点 + 线
       datasets.push({
         label: 'Self',
         data: crfSelf.map(b => ({ x: b.rtMean, y: b.upperProp })),
@@ -1180,7 +1619,30 @@ function updateCRFChart() {
         order: 1,
       });
     }
+
+    // ===== Stranger 条件 =====
     if (crfStranger) {
+      const stXs = crfStranger.map(b => b.rtMean);
+      const stYs = crfStranger.map(b => b.upperProp);
+      const stFit = polyFit(stXs, stYs, 2);
+      if (stFit) {
+        const fitPoints = [];
+        const xMin = stXs[0], xMax = stXs[stXs.length - 1];
+        const xRange = xMax - xMin || 0.001;
+        for (let i = 0; i <= 60; i++) {
+          const x = xMin + (xRange * i / 60);
+          fitPoints.push({ x, y: predictPoly(stFit, x) });
+        }
+        datasets.push({
+          label: 'Stranger trend',
+          data: fitPoints,
+          borderColor: withAlpha('#2196f3', 0.5),
+          backgroundColor: 'transparent',
+          pointRadius: 0, borderWidth: 1.5, borderDash: [5, 3], tension: 0, showLine: true,
+          order: 3,
+        });
+      }
+
       datasets.push({
         label: 'Stranger',
         data: crfStranger.map(b => ({ x: b.rtMean, y: b.upperProp })),
@@ -1190,9 +1652,81 @@ function updateCRFChart() {
       });
     }
 
-    const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
-    const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
-    const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+    const ciBandPlugin = {
+      id: 'crfCIBands',
+      beforeDatasetsDraw(chart) {
+        const { ctx, chartArea, scales: { x, y } } = chart;
+        const { left, top, right, bottom } = chartArea;
+        ctx.save();
+
+        ctx.beginPath();
+        ctx.rect(left, top, right - left, bottom - top);
+        ctx.clip();
+
+        const drawDensityBg = (bins, color) => {
+          if (!bins || bins.length < 2) return;
+          const totalWidth = right - left;
+          const n = bins.length;
+          const slotW = totalWidth / n;
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.12;
+          bins.forEach((b, i) => {
+            const cx = left + slotW * (i + 0.5);
+            const w = slotW * 0.85;
+            ctx.fillRect(cx - w/2, top, w, bottom - top);
+          });
+        };
+        if (crfSelf) drawDensityBg(crfSelf, '#ff9800');
+        if (crfStranger) drawDensityBg(crfStranger, '#2196f3');
+
+        const drawCIBand = (bins, color) => {
+          if (!bins || bins.length < 2) return;
+          ctx.beginPath();
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.3;
+          const clampY = (val) => Math.max(top, Math.min(bottom, val));
+          const firstX = x.getPixelForValue(bins[0].rtMean);
+          ctx.moveTo(firstX, clampY(y.getPixelForValue(bins[0].upperProp + bins[0].sem * 1.96)));
+          for (let i = 1; i < bins.length; i++) {
+            ctx.lineTo(x.getPixelForValue(bins[i].rtMean), clampY(y.getPixelForValue(bins[i].upperProp + bins[i].sem * 1.96)));
+          }
+          for (let i = bins.length - 1; i >= 0; i--) {
+            ctx.lineTo(x.getPixelForValue(bins[i].rtMean), clampY(y.getPixelForValue(bins[i].upperProp - bins[i].sem * 1.96)));
+          }
+          ctx.closePath();
+          ctx.fill();
+        };
+        if (crfSelf) drawCIBand(crfSelf, withAlpha('#ff9800', 0.12));
+        if (crfStranger) drawCIBand(crfStranger, withAlpha('#2196f3', 0.12));
+
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1.5;
+        const clampY = (val) => Math.max(top, Math.min(bottom, val));
+        const drawErrorBars = (bins, color) => {
+          bins.forEach(b => {
+            const px = x.getPixelForValue(b.rtMean);
+            if (px < left || px > right) return;
+            const yUpper = clampY(y.getPixelForValue(b.upperProp + b.sem * 1.96));
+            const yLower = clampY(y.getPixelForValue(b.upperProp - b.sem * 1.96));
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(px, yUpper);
+            ctx.lineTo(px, yLower);
+            ctx.stroke();
+            ctx.beginPath();
+            const capTop = Math.max(top, yUpper);
+            const capBot = Math.min(bottom, yLower);
+            ctx.moveTo(px - 3, capTop); ctx.lineTo(px + 3, capTop);
+            ctx.moveTo(px - 3, capBot); ctx.lineTo(px + 3, capBot);
+            ctx.stroke();
+          });
+        };
+        if (crfSelf) drawErrorBars(crfSelf, '#ff9800');
+        if (crfStranger) drawErrorBars(crfStranger, '#2196f3');
+
+        ctx.restore();
+      }
+    };
 
     // 0.5基线插件
     const baselinePlugin = {
@@ -1209,12 +1743,15 @@ function updateCRFChart() {
           ctx.moveTo(left, y05);
           ctx.lineTo(right, y05);
           ctx.stroke();
+          // ggcube 风格: 添加小的 "0.5" 标注
+          ctx.fillStyle = textColor;
+          ctx.font = '10px sans-serif';
+          ctx.fillText('chance', left + 4, y05 - 5);
           ctx.restore();
         }
       }
     };
 
-    // 增量更新：如果已有实例则更新数据，否则创建新实例
     if (crfChartInst) {
       crfChartInst.data.datasets = datasets;
       crfChartInst.options.scales.x.title.color = textColor;
@@ -1231,9 +1768,18 @@ function updateCRFChart() {
         data: { datasets },
         options: {
           responsive: true, maintainAspectRatio: false, showLine: true,
-          animation: { duration: 200 },
+          animation: { duration: 300, easing: 'easeOutQuart' },
           plugins: {
-            legend: { labels: { color: legendColor, usePointStyle: true } },
+            legend: { labels: { color: legendColor, usePointStyle: true, filter: item => !item.text.includes('trend') } },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const d = ctx.dataset;
+                  if (d.label.includes('trend')) return '';
+                  return `${d.label}: RT=${ctx.parsed.x.toFixed(2)}s, P(Match)=${(ctx.parsed.y*100).toFixed(1)}%`;
+                }
+              }
+            }
           },
           scales: {
             x: {
@@ -1247,7 +1793,7 @@ function updateCRFChart() {
             }
           }
         },
-        plugins: [baselinePlugin],
+        plugins: [baselinePlugin, ciBandPlugin],
       });
     }
 
@@ -1256,7 +1802,8 @@ function updateCRFChart() {
   });
 }
 
-// === SPE图表 ===
+// === SPE图表 (增强版: 含零基线、置信区间带、趋势线) ===
+// 参考 ggcube 的 CI surface 设计
 function updateSPEChart(crfSelf, crfStranger) {
   const ctx = document.getElementById('speChart').getContext('2d');
   const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
@@ -1273,23 +1820,110 @@ function updateSPEChart(crfSelf, crfStranger) {
   }
 
   const speData = [];
+  const speSems = [];
   const minLen = Math.min(crfSelf.length, crfStranger.length);
   for (let i = 0; i < minLen; i++) {
-    speData.push({
-      x: (crfSelf[i].rtMean + crfStranger[i].rtMean) / 2,
-      y: crfSelf[i].upperProp - crfStranger[i].upperProp,
+    const rtX = (crfSelf[i].rtMean + crfStranger[i].rtMean) / 2;
+    const spe = crfSelf[i].upperProp - crfStranger[i].upperProp;
+    // SEM for difference: sqrt(sem_self^2 + sem_stranger^2)
+    const sem = Math.sqrt(crfSelf[i].sem * crfSelf[i].sem + crfStranger[i].sem * crfStranger[i].sem);
+    speData.push({ x: rtX, y: spe });
+    speSems.push(sem);
+  }
+
+  // 趋势拟合
+  const speXs = speData.map(d => d.x);
+  const speYs = speData.map(d => d.y);
+  const speFit = polyFit(speXs, speYs, 2);
+  const datasets = [
+    {
+      label: 'SPE = P_Self - P_Stranger',
+      data: speData,
+      borderColor: '#ce93d8', backgroundColor: '#ce93d8',
+      pointRadius: 7, pointHoverRadius: 10, borderWidth: 2.5, tension: 0.1,
+      order: 1,
+    },
+  ];
+  if (speFit) {
+    const fitPoints = [];
+    const xMin = speXs[0], xMax = speXs[speXs.length - 1];
+    const xRange = xMax - xMin || 0.001;
+    for (let i = 0; i <= 60; i++) {
+      const x = xMin + (xRange * i / 60);
+      fitPoints.push({ x, y: predictPoly(speFit, x) });
+    }
+    datasets.unshift({
+      label: 'SPE trend',
+      data: fitPoints,
+      borderColor: withAlpha('#ce93d8', 0.45),
+      backgroundColor: 'transparent',
+      pointRadius: 0, borderWidth: 1.5, borderDash: [5, 3], tension: 0, showLine: true,
+      order: 3,
     });
   }
 
-  const dataset = {
-    label: 'P_Self - P_Stranger',
-    data: speData,
-    borderColor: '#ce93d8', backgroundColor: '#ce93d8',
-    pointRadius: 7, pointHoverRadius: 10, borderWidth: 2.5, tension: 0.1,
+  // ggcube 风格: 零基线 + 置信区间带的自定义插件
+  const speBaselinePlugin = {
+    id: 'speBaseline',
+    beforeDatasetsDraw(chart) {
+      const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+      const y0 = y.getPixelForValue(0);
+      if (y0 >= chart.chartArea.top && y0 <= chart.chartArea.bottom) {
+        ctx.save();
+        ctx.setLineDash([8, 4]);
+        ctx.strokeStyle = textColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(left, y0);
+        ctx.lineTo(right, y0);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 置信区间带
+      if (speSems.length >= 2) {
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        const { x: scaleX } = chart.scales;
+        ctx.beginPath();
+        ctx.fillStyle = '#ce93d8';
+        const firstX = scaleX.getPixelForValue(speData[0].x);
+        ctx.moveTo(firstX, y.getPixelForValue(speData[0].y + speSems[0] * 1.96));
+        for (let i = 1; i < speData.length; i++) {
+          ctx.lineTo(scaleX.getPixelForValue(speData[i].x), y.getPixelForValue(speData[i].y + speSems[i] * 1.96));
+        }
+        for (let i = speData.length - 1; i >= 0; i--) {
+          ctx.lineTo(scaleX.getPixelForValue(speData[i].x), y.getPixelForValue(speData[i].y - speSems[i] * 1.96));
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // 误差棒
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = '#ce93d8';
+        ctx.lineWidth = 1.5;
+        speData.forEach((d, i) => {
+          const px = scaleX.getPixelForValue(d.x);
+          const yUpper = y.getPixelForValue(d.y + speSems[i] * 1.96);
+          const yLower = y.getPixelForValue(d.y - speSems[i] * 1.96);
+          ctx.beginPath();
+          ctx.moveTo(px, yUpper);
+          ctx.lineTo(px, yLower);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(px - 3, yUpper); ctx.lineTo(px + 3, yUpper);
+          ctx.moveTo(px - 3, yLower); ctx.lineTo(px + 3, yLower);
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
+    }
   };
 
   if (speChartInst) {
-    speChartInst.data.datasets = [dataset];
+    speChartInst.data.datasets = datasets;
     speChartInst.options.scales.x.title.color = textColor;
     speChartInst.options.scales.x.ticks.color = textColor;
     speChartInst.options.scales.x.grid.color = gridColor;
@@ -1301,12 +1935,21 @@ function updateSPEChart(crfSelf, crfStranger) {
   } else {
     speChartInst = new Chart(ctx, {
       type: 'scatter',
-      data: { datasets: [dataset] },
+      data: { datasets },
       options: {
         responsive: true, maintainAspectRatio: false, showLine: true,
-        animation: { duration: 200 },
+        animation: { duration: 300, easing: 'easeOutQuart' },
         plugins: {
-          legend: { labels: { color: legendColor, usePointStyle: true } },
+          legend: { labels: { color: legendColor, usePointStyle: true, filter: item => !item.text.includes('trend') } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const d = ctx.dataset;
+                if (d.label.includes('trend')) return '';
+                return `SPE: RT=${ctx.parsed.x.toFixed(2)}s, ΔP(Match)=${(ctx.parsed.y*100).toFixed(1)}%`;
+              }
+            }
+          }
         },
         scales: {
           x: {
@@ -1314,12 +1957,13 @@ function updateSPEChart(crfSelf, crfStranger) {
             ticks: { color: textColor }, grid: { color: gridColor }
           },
           y: {
-            title: { display: true, text: 'Δ 匹配键比例', color: textColor },
+            title: { display: true, text: 'SPE: Δ 匹配键比例 (Self - Stranger)', color: textColor },
             ticks: { color: textColor },
             grid: { color: gridColor }
           }
         }
-      }
+      },
+      plugins: [speBaselinePlugin],
     });
   }
 }
@@ -1593,13 +2237,16 @@ function escapeHTML(str) {
   return div.innerHTML;
 }
 
-// ==================== TAB 4: DESIGN SPACE ANALYSIS ====================
+// ==================== TAB 4: DESIGN SPACE ANALYSIS (ggcube 风格多面板设计) ====================
+// 参考 ggcube 的 coord_3d 多面板 (face projection) 设计,
+// 将 T×W 参数空间分解为多个协同面板: 气泡图 + 边际分布 + 趋势面板
+
 async function renderDesignTab(lp, rp) {
   lp.innerHTML = `
-    <div class="section-title">实验设计参数</div>
-    <div style="font-size:0.82em;line-height:1.8;background:#0d1b2a;padding:12px;border-radius:6px;">
+    <div class="section-title">实验设计参数 (P/T/W)</div>
+    <div style="font-size:0.82em;line-height:1.8;background:var(--bg-card);padding:12px;border-radius:6px;">
       <table style="width:100%;border-collapse:collapse;">
-        <tr style="color:#64b5f6;"><th>组别</th><th>P</th><th>T(s)</th><th>W(s)</th><th>质量</th></tr>
+        <tr style="color:var(--accent);"><th>组别</th><th>P</th><th>T(s)</th><th>W(s)</th><th>质量</th></tr>
         <tr><td>G1</td><td>0</td><td>0.03</td><td>0.3</td><td style="color:#f44336;">exclude</td></tr>
         <tr><td>G2</td><td>0</td><td>0.03</td><td>0.6</td><td style="color:#f44336;">exclude</td></tr>
         <tr><td>G3</td><td>120</td><td>0.03</td><td>0.6</td><td style="color:#ff9800;">caution</td></tr>
@@ -1610,36 +2257,172 @@ async function renderDesignTab(lp, rp) {
         <tr><td>G8</td><td>120</td><td>0.03</td><td>0.8</td><td style="color:#4caf50;">good</td></tr>
       </table>
     </div>
-    <div class="section-title" style="margin-top:12px;">分析控制</div>
-    <button id="btnLoadDesignData" style="width:100%;margin-bottom:8px;">加载所有数据进行分析</button>
-    <div id="designDataInfo" style="font-size:0.75em;color:#90a4ae;margin-bottom:8px;"></div>
+
+    <div class="section-title" style="margin-top:12px;">设计空间导航</div>
+    <button id="btnLoadDesignData" style="width:100%;margin-bottom:6px;">加载所有数据进行分析</button>
+    <div id="designDataInfo" style="font-size:0.75em;color:var(--text-secondary);margin-bottom:6px;"></div>
+
+    <div class="section-title">质量筛选 (ggcube 前景/背景风格)</div>
     <div class="filter-row">
-      <label><input type="checkbox" id="designQualityGood" checked onchange="updateDesignCharts()"> Good</label>
-      <label><input type="checkbox" id="designQualityCaution" checked onchange="updateDesignCharts()"> Caution</label>
-      <label><input type="checkbox" id="designQualityExclude" checked onchange="updateDesignCharts()"> Exclude</label>
+      <label class="crf-filter-chip" id="chipDesignGood" style="background:rgba(76,175,80,0.2);border:1px solid rgba(76,175,80,0.5);padding:3px 10px;border-radius:12px;cursor:pointer;font-size:0.78em;">
+        <input type="checkbox" id="designQualityGood" checked style="display:none;"> Good</label>
+      <label class="crf-filter-chip" id="chipDesignCaution" style="background:rgba(255,152,0,0.18);border:1px solid rgba(255,152,0,0.45);padding:3px 10px;border-radius:12px;cursor:pointer;font-size:0.78em;">
+        <input type="checkbox" id="designQualityCaution" checked style="display:none;"> Caution</label>
+      <label class="crf-filter-chip" id="chipDesignExclude" style="background:rgba(244,67,54,0.15);border:1px solid rgba(244,67,54,0.4);padding:3px 10px;border-radius:12px;cursor:pointer;font-size:0.78em;">
+        <input type="checkbox" id="designQualityExclude" checked style="display:none;"> Exclude</label>
     </div>
+
+    <div class="section-title">多组比较 (勾选 2+ 组进行对比)</div>
+    <div id="designCompareChecks" style="display:flex;flex-wrap:wrap;gap:4px;font-size:0.78em;">
+      ${[1,2,3,4,5,6,7,8].map(g => `
+        <label style="display:flex;align-items:center;gap:3px;cursor:pointer;padding:2px 6px;border-radius:4px;border:1px solid var(--border-light);background:var(--bg-card);">
+          <input type="checkbox" class="design-compare-cb" value="${g}" style="width:auto;margin:0;"> G${g}
+        </label>
+      `).join('')}
+    </div>
+    <button id="btnCompareGroups" style="width:100%;margin-top:6px;font-size:0.8em;">更新比较图表</button>
+    <div style="font-size:0.72em;color:var(--text-secondary);margin-top:4px;">对比指标: 正确率 / 遗漏率 / 平均RT / SPE</div>
   `;
   rp.innerHTML = `
-    <div class="chart-container" style="flex:1;">
-      <div class="section-title">P/T/W参数对决策偏差的影响</div>
-      <canvas id="designBubbleChart" style="max-height:400px;"></canvas>
+    <!-- ggcube coord_3d 风格: 3D 设计空间透视视图 — 重构布局 -->
+    <div class="chart-container" style="flex:3;min-height:520px;">
+      <div class="section-title">
+        3D 设计空间 — T·W·P 三维透视 (ggcube coord_3d)
+        <span id="d3dFilterBadge" style="font-size:0.72em;font-weight:400;"> </span>
+      </div>
+      <div style="position:relative;">
+        <canvas id="design3DCanvas" class="three-d-canvas" style="height:340px;"></canvas>
+        <div class="three-d-tooltip" id="d3dTooltip"></div>
+      </div>
+      <div class="three-d-controls" style="margin-top:6px;">
+        <label>俯仰<input type="range" id="d3dPitch" min="-90" max="90" value="20" step="1"></label>
+        <label>翻滚<input type="range" id="d3dRoll" min="-90" max="90" value="-55" step="1"></label>
+        <label>偏航<input type="range" id="d3dYaw" min="-180" max="180" value="-25" step="1"></label>
+        <label style="gap:2px;"><input type="checkbox" id="d3dPersp" checked>透视</label>
+        <label style="gap:2px;"><input type="checkbox" id="d3dAutoRot">旋转</label>
+        <label style="gap:2px;"><input type="checkbox" id="d3dShowIndiv">个体点</label>
+        <label>缩放<input type="range" id="d3dZoom" min="20" max="200" value="100" step="5"></label>
+      </div>
+      <div style="font-size:0.68em;color:var(--text-secondary);margin-top:3px;display:flex;gap:16px;flex-wrap:wrap;">
+        <span>🟠 T轴: 刺激呈现</span><span>🔵 W轴: 反应窗口</span><span>🟢 P轴: 练习次数</span>
+        <span>🖱 拖拽旋转 | 🔍 悬停查看详情</span>
+      </div>
     </div>
-    <div class="chart-container" style="flex:1;">
-      <div class="section-title">各组数据质量与敏感性分析</div>
-      <div style="display:flex;gap:8px;">
-        <div style="flex:1;"><canvas id="designQualityChart" style="max-height:280px;"></canvas></div>
-        <div style="flex:1;"><canvas id="designSensitivityChart" style="max-height:280px;"></canvas></div>
+
+    <!-- 三视图面投影 + 图例面板 (水平排列，位于3D图下方) -->
+    <div class="chart-container design-row-single" style="flex:0.8;min-height:130px;">
+      <div class="section-title">三视图面投影 — T×W / T×P / W×P 设计空间 <span style="font-weight:400;font-size:0.8em;color:var(--text-secondary);margin-left:6px;">(ggcube position_on_face)</span></div>
+      <div style="display:flex;gap:8px;min-height:100px;">
+        <div class="three-d-face" style="flex:1;"><canvas id="design3DTop"></canvas></div>
+        <div class="three-d-face" style="flex:1;"><canvas id="design3DFront"></canvas></div>
+        <div class="three-d-face" style="flex:1;"><canvas id="design3DSide"></canvas></div>
+        <div class="three-d-legend" id="d3dLegendPanel" style="flex:1.3;background:var(--bg-card);padding:5px 7px;border-radius:4px;border:1px solid var(--border);overflow-y:auto;line-height:1.55;font-size:0.68em;">
+          <div style="margin-bottom:3px;font-weight:700;color:var(--accent);">图例说明系统</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <div style="min-width:100px;">
+              <div style="font-weight:600;font-size:0.95em;">▎质量环</div>
+              <div><span class="legend-dot" style="background:#4caf50;width:7px;height:7px;border-radius:50%;border:1.5px solid #81c784;"></span> Good</div>
+              <div><span class="legend-dot" style="background:#ff9800;width:7px;height:7px;border-radius:50%;border:1.5px solid #ffb74d;"></span> Caution</div>
+              <div><span class="legend-dot" style="background:#f44336;width:7px;height:7px;border-radius:50%;border:1.5px solid #ef9a9a;"></span> Exclude</div>
+            </div>
+            <div style="min-width:110px;">
+              <div style="font-weight:600;font-size:0.95em;">▎球径标准</div>
+              <div>r = 8 + ACC×0.24</div>
+              <div>越大 = 正确率↑</div>
+            </div>
+            <div style="min-width:130px;">
+              <div style="font-weight:600;font-size:0.95em;">▎坐标轴</div>
+              <div>🟠 T: 刺激(ms)</div>
+              <div>🔵 W: 窗口(ms)</div>
+              <div>🟢 P: 练习(次)</div>
+            </div>
+            <div style="min-width:100px;">
+              <div style="font-weight:600;font-size:0.95em;">▎组别色彩</div>
+              ${[1,2,3,4,5,6,7,8].map(g => {
+                const labels = {1:'排除',2:'排除',3:'谨慎',4:'良好',5:'良好',6:'良好',7:'良好',8:'良好'};
+                const palette = ['#e91e63','#2196f3','#4caf50','#ff9800','#9c27b0','#00bcd4','#ffeb3b','#795548'];
+                return `<div style="font-size:0.92em;"><span class="legend-dot" style="background:${palette[g-1]};"></span>G${g}</div>`;
+              }).join('')}
+            </div>
+          </div>
+          <div style="margin-top:1px;font-size:0.92em;">💡 HSL Light() 混合: 近亮远暗 | 🎨 径向渐变球体质感</div>
+        </div>
+      </div>
+      <div class="tooltip-info" style="margin-top:2px;">过滤掉的组以半透明虚线圈显示；拖拽3D图旋转可同步更新三视图数据点</div>
+    </div>
+    <div class="chart-container" style="flex:2;">
+      <div class="section-title">T×W 设计空间 — 实验参数对正确率的影响</div>
+      <div class="design-row">
+        <div class="design-bubble-col"><canvas id="designBubbleChart"></canvas></div>
+        <div class="design-dist-col">
+          <div style="flex:1;position:relative;"><canvas id="designWDistChart"></canvas></div>
+          <div style="flex:1;position:relative;"><canvas id="designTDistChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div class="chart-container design-row-single">
+      <div class="section-title">参数-质量趋势面板 (P, T, W vs 正确率)</div>
+      <div class="design-trend-row">
+        <div style="flex:1;"><canvas id="designPVizChart"></canvas></div>
+        <div style="flex:1;"><canvas id="designTVizChart"></canvas></div>
+        <div style="flex:1;"><canvas id="designWVizChart"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-container design-row-single">
+      <div class="section-title">组别数据质量概览 (正确率 + 遗漏率)</div>
+      <div style="display:flex;gap:8px;min-height:230px;">
+        <div style="flex:1;"><canvas id="designQualityChart"></canvas></div>
+        <div style="flex:1;"><canvas id="designSensitivityChart"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-container" style="flex:1.2;min-height:280px;">
+      <div class="section-title">多组比较 — 选中组别指标对比</div>
+      <div style="display:flex;gap:8px;min-height:250px;">
+        <div style="flex:1;"><canvas id="designCompareRTChart"></canvas></div>
+        <div style="flex:1;"><canvas id="designCompareMetricChart"></canvas></div>
       </div>
     </div>
   `;
 
+  // 质量筛选chip样式
+  ['Good','Caution','Exclude'].forEach(q => {
+    const chip = document.getElementById(`chipDesign${q}`);
+    const cb = document.getElementById(`designQuality${q}`);
+    if (chip && cb) {
+      const colors = {
+        Good: { active: 'rgba(76,175,80,0.28)', inactive: 'rgba(76,175,80,0.06)', border: 'rgba(76,175,80,0.55)' },
+        Caution: { active: 'rgba(255,152,0,0.25)', inactive: 'rgba(255,152,0,0.06)', border: 'rgba(255,152,0,0.5)' },
+        Exclude: { active: 'rgba(244,67,54,0.22)', inactive: 'rgba(244,67,54,0.06)', border: 'rgba(244,67,54,0.45)' },
+      };
+      const update = () => {
+        const c = colors[q];
+        chip.style.background = cb.checked ? c.active : c.inactive;
+        chip.style.borderColor = cb.checked ? c.border : 'rgba(128,128,128,0.18)';
+        chip.style.opacity = cb.checked ? '1' : '0.5';
+      };
+      chip.addEventListener('click', (e) => { e.preventDefault(); cb.checked = !cb.checked; update(); updateDesignCharts(); });
+      update();
+    }
+  });
+
   document.getElementById('btnLoadDesignData').addEventListener('click', async () => {
-    document.getElementById('designDataInfo').textContent = '加载中...';
+    document.getElementById('designDataInfo').textContent = '⏳ 加载中...';
     appState.allData = await fetchAPI('/api/data/all');
+    const s = appState.allData;
     document.getElementById('designDataInfo').textContent =
-      `已加载 ${appState.allData.summary.length} 文件, ${appState.allData.trials.length} 试次`;
+      `已加载 ${s.summary.length} 文件, ${s.trials.length} 试次 | 覆盖 ${new Set(s.summary.map(x=>x.groupID)).size} 组`;
     updateDesignCharts();
   });
+
+  document.getElementById('btnCompareGroups').addEventListener('click', () => {
+    if (!appState.allData) {
+      alert('请先点击「加载所有数据进行分析」');
+      return;
+    }
+    renderCompareCharts();
+  });
+
+  init3DControls();
 }
 
 function getDesignGroupSummary() {
@@ -1654,7 +2437,7 @@ function getDesignGroupSummary() {
     if (!groups[gid]) {
       const d = designMap[gid];
       groups[gid] = { groupID: gid, P: d.P, T: d.T, W: d.W, quality: qualityMap[gid],
-        totalTrials: 0, totalFormal: 0, totalResponses: 0, totalCorrect: 0, nSubjects: 0 };
+        totalTrials: 0, totalFormal: 0, totalResponses: 0, totalCorrect: 0, nSubjects: 0, rtSum: 0, rtCount: 0 };
     }
     groups[gid].totalTrials += s.total;
     groups[gid].totalFormal += s.formal;
@@ -1662,74 +2445,332 @@ function getDesignGroupSummary() {
     groups[gid].totalCorrect += s.correct;
     groups[gid].nSubjects++;
   });
+  if (appState.allData.trials) {
+    appState.allData.trials.forEach(t => {
+      if (t.stage === 'formal' && t.RT && groups[t.groupID]) {
+        groups[t.groupID].rtSum += t.RT;
+        groups[t.groupID].rtCount++;
+      }
+    });
+  }
   return Object.values(groups).map(g => ({
     ...g,
     omissionRate: g.totalFormal > 0 ? ((g.totalFormal - g.totalResponses) / g.totalFormal * 100) : 0,
     accuracy: g.totalResponses > 0 ? (g.totalCorrect / g.totalResponses * 100) : 0,
+    meanRT: g.rtCount > 0 ? (g.rtSum / g.rtCount) : 0,
   }));
 }
 
-function updateDesignCharts() {
-  if (!appState.allData) return;
+function getFilteredDesignGroups() {
   const summary = getDesignGroupSummary();
   const showGood = document.getElementById('designQualityGood')?.checked ?? true;
   const showCaution = document.getElementById('designQualityCaution')?.checked ?? true;
   const showExclude = document.getElementById('designQualityExclude')?.checked ?? true;
-  const filtered = summary.filter(g => {
+  return summary.filter(g => {
     if (g.quality === 'good' && !showGood) return false;
     if (g.quality === 'caution' && !showCaution) return false;
     if (g.quality === 'exclude' && !showExclude) return false;
     return true;
   });
-
-  renderDesignBubbleChart(filtered);
-  renderDesignQualityChart(filtered);
-  renderDesignSensitivityChart(filtered);
 }
 
+function updateDesignCharts() {
+  if (!appState.allData) return;
+  const groups = getFilteredDesignGroups();
+  const allGroups = getDesignGroupSummary();
+
+  const d3dCanvas = document.getElementById('design3DCanvas');
+  if (d3dCanvas) {
+    d3dCanvas.classList.add('transitioning');
+    setTimeout(() => {
+      render3DDesignSpace();
+      d3dCanvas.classList.remove('transitioning');
+    }, 50);
+  }
+
+  renderDesignBubbleChart(groups);
+  renderDesignDistCharts(allGroups);
+  renderDesignTrendPanels(allGroups);
+  renderDesignQualityChart(groups);
+  renderDesignSensitivityChart(groups);
+  if (!d3dCanvas) render3DDesignSpace();
+}
+
+// ===== Design Bubble Chart (增强版: T×W 设计空间 + HSL 颜色混合 + 边际rug投影) =====
+// 气泡大小 ∝ P, 位置 = (T, W), 颜色 = 数据质量 (HSL 混合)
+// ggcube ref_points: 边际rug沿T轴和W轴投影
 let designBubbleInst = null;
 function renderDesignBubbleChart(groups) {
-  const ctx = document.getElementById('designBubbleChart').getContext('2d');
+  const canvas = document.getElementById('designBubbleChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
   if (designBubbleInst) designBubbleInst.destroy();
-  const colors = {good:'#4caf50',caution:'#ff9800',exclude:'#f44336'};
+
+  // ggcube 风格: HSL 亮度调整让颜色更丰富
+  const baseColors = {good:'#4caf50', caution:'#ff9800', exclude:'#f44336'};
+
   const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
   const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
   const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  // ggcube 风格边际rug插件: 沿T/W轴投影点
+  const rugPlugin = {
+    id: 'designRug',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x, y } } = chart;
+      ctx.save();
+      groups.forEach(g => {
+        const px = x.getPixelForValue(g.T);
+        const py = y.getPixelForValue(g.W);
+        const color = baseColors[g.quality];
+        ctx.fillStyle = withAlpha(color, 0.5);
+        // 底部 T 轴 rug
+        ctx.fillRect(px - 2, bottom - 1, 4, 8);
+        // 左侧 W 轴 rug
+        ctx.fillRect(left - 1, py - 2, 8, 4);
+      });
+      ctx.restore();
+    }
+  };
+
   designBubbleInst = new Chart(ctx, {
     type: 'bubble',
     data: {
       datasets: groups.map(g => ({
-        label: `G${g.groupID} [${g.quality}]`,
-        data: [{x: g.T, y: g.W, r: Math.max(8, g.P * 0.15)}],
-        backgroundColor: colors[g.quality] + '88',
-        borderColor: colors[g.quality],
+        label: `G${g.groupID} (${g.quality}) P=${g.P}`,
+        data: [{x: g.T, y: g.W, r: Math.max(10, g.P * 0.18 + 8)}],
+        backgroundColor: withAlpha(baseColors[g.quality], 0.65),
+        borderColor: hslBlend(baseColors[g.quality], -0.1),
         borderWidth: 2,
       }))
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      animation: { duration: 400, easing: 'easeOutQuart' },
       plugins: {
         tooltip: {
           callbacks: {
             label: ctx => {
               const g = groups[ctx.datasetIndex];
-              return `G${g.groupID}: P=${g.P}, T=${g.T}ms, W=${g.W}ms, ACC=${g.accuracy.toFixed(1)}%, Omission=${g.omissionRate.toFixed(1)}%`;
+              return [
+                `G${g.groupID}: P=${g.P}, T=${g.T}ms, W=${g.W}ms`,
+                `正确率: ${g.accuracy.toFixed(1)}% | 遗漏率: ${g.omissionRate.toFixed(1)}%`,
+                `质量: ${g.quality} | ${g.nSubjects}位被试`,
+              ];
             }
           }
         },
-        legend: { labels: { color: legendColor } }
+        legend: { labels: { color: legendColor, usePointStyle: true, filter: (item, data) => data.datasets.length <= 8 ? true : item.index < 8 } },
+        subtitle: { display: true, text: '气泡大小 ∝ P (练习试次) | 颜色 = 数据质量', color: textColor, font: { size: 11 } }
       },
       scales: {
-        x: { title: { display: true, text: 'T (ms)', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
-        y: { title: { display: true, text: 'W (ms)', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } }
+        x: {
+          type: 'linear',
+          title: { display: true, text: '刺激呈现 T (ms)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor },
+          min: -10, max: 560,
+        },
+        y: {
+          type: 'linear',
+          title: { display: true, text: '反应窗口 W (ms)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor },
+          min: 0, max: 1700,
+        }
       }
-    }
+    },
+    plugins: [rugPlugin],
   });
 }
 
+// ===== 设计空间边际分布图 (ggcube face projection 概念) =====
+let designWDistInst = null;
+let designTDistInst = null;
+function renderDesignDistCharts(allGroups) {
+  const qualityColors = {good:'#4caf50',caution:'#ff9800',exclude:'#f44336'};
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+
+  // W 边际分布 (沿 W 轴)
+  const wCtx = document.getElementById('designWDistChart')?.getContext('2d');
+  if (wCtx) {
+    if (designWDistInst) designWDistInst.destroy();
+    const wValues = allGroups.map(g => g.W);
+    const wLabels = allGroups.map(g => `G${g.groupID}`);
+    designWDistInst = new Chart(wCtx, {
+      type: 'bar',
+      data: {
+        labels: wLabels,
+        datasets: [{
+          label: 'W (ms)',
+          data: wValues,
+          backgroundColor: allGroups.map(g => withAlpha(qualityColors[g.quality], 0.7)),
+          borderColor: allGroups.map(g => hslBlend(qualityColors[g.quality], -0.08)),
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        indexAxis: 'y',
+        animation: { duration: 300 },
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: 'W 边际分布', color: textColor, font: { size: 10 } }
+        },
+        scales: {
+          x: { title: { display: true, text: 'W (ms)', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 8 } }, grid: { color: gridColor } },
+          y: { ticks: { color: textColor, font: { size: 8 } }, grid: { color: gridColor } }
+        }
+      }
+    });
+  }
+
+  // T 边际分布 (沿 T 轴)
+  const tCtx = document.getElementById('designTDistChart')?.getContext('2d');
+  if (tCtx) {
+    if (designTDistInst) designTDistInst.destroy();
+    const tValues = allGroups.map(g => g.T);
+    const tLabels = allGroups.map(g => `G${g.groupID}`);
+    designTDistInst = new Chart(tCtx, {
+      type: 'bar',
+      data: {
+        labels: tLabels,
+        datasets: [{
+          label: 'T (ms)',
+          data: tValues,
+          backgroundColor: allGroups.map(g => withAlpha(qualityColors[g.quality], 0.7)),
+          borderColor: allGroups.map(g => hslBlend(qualityColors[g.quality], -0.08)),
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        indexAxis: 'y',
+        animation: { duration: 300 },
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: 'T 边际分布', color: textColor, font: { size: 10 } }
+        },
+        scales: {
+          x: { title: { display: true, text: 'T (ms)', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 8 } }, grid: { color: gridColor } },
+          y: { ticks: { color: textColor, font: { size: 8 } }, grid: { color: gridColor } }
+        }
+      }
+    });
+  }
+}
+
+// ===== 参数-质量趋势面板 (P/T/W vs Accuracy) =====
+// ggcube 风格: 类似 stat_smooth_3d 的多面板趋势分析
+let designPVizInst = null, designTVizInst = null, designWVizInst = null;
+function renderDesignTrendPanels(allGroups) {
+  const qualityColors = {good:'#4caf50',caution:'#ff9800',exclude:'#f44336'};
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  const configs = [
+    { id: 'designPVizChart', ref: 'designPVizInst', xKey: 'P', title: 'P vs Accuracy', xLabel: 'P (trials)' },
+    { id: 'designTVizChart', ref: 'designTVizInst', xKey: 'T', title: 'T vs Accuracy', xLabel: 'T (ms)' },
+    { id: 'designWVizChart', ref: 'designWVizInst', xKey: 'W', title: 'W vs Accuracy', xLabel: 'W (ms)' },
+  ];
+
+  configs.forEach(cfg => {
+    const canvas = document.getElementById(cfg.id);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    // 删除旧实例
+    if (cfg.ref === 'designPVizInst' && designPVizInst) designPVizInst.destroy();
+    if (cfg.ref === 'designTVizInst' && designTVizInst) designTVizInst.destroy();
+    if (cfg.ref === 'designWVizInst' && designWVizInst) designWVizInst.destroy();
+
+    const points = allGroups.map(g => ({
+      x: g[cfg.xKey],
+      y: g.accuracy,
+      r: Math.max(4, g.nSubjects * 3),
+      quality: g.quality,
+      label: `G${g.groupID}: ${g.accuracy.toFixed(1)}%`,
+    }));
+
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const fit = points.length >= 3 ? polyFit(xs, ys, 1) : null;
+
+    const datasets = [{
+      label: 'Accuracy',
+      data: points,
+      backgroundColor: points.map(p => withAlpha(qualityColors[p.quality], 0.75)),
+      borderColor: points.map(p => hslBlend(qualityColors[p.quality], -0.08)),
+      borderWidth: 1,
+    }];
+
+    if (fit) {
+      const sortedX = [...xs].sort((a,b)=>a-b);
+      const xMin = sortedX[0], xMax = sortedX[sortedX.length-1];
+      const xRange = xMax - xMin || 0.001;
+      const fitPoints = [];
+      for (let i = 0; i <= 50; i++) {
+        const x = xMin + (xRange * i / 50);
+        fitPoints.push({x, y: predictPoly(fit, x)});
+      }
+      datasets.push({
+        label: 'trend',
+        data: fitPoints,
+        type: 'line',
+        borderColor: textColor,
+        borderWidth: 1.5,
+        borderDash: [4, 3],
+        pointRadius: 0,
+        fill: false,
+      });
+    }
+
+    const inst = new Chart(ctx, {
+      type: 'bubble',
+      data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: cfg.title, color: textColor, font: { size: 10 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                if (ctx.dataset.label === 'trend') return '';
+                const p = points[ctx.dataIndex];
+                return p ? `${p.label} | Quality: ${p.quality}` : '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: cfg.xLabel, color: textColor, font: { size: 9 } },
+            ticks: { color: textColor, font: { size: 8 } }, grid: { color: gridColor }
+          },
+          y: {
+            title: { display: true, text: 'Accuracy %', color: textColor, font: { size: 9 } },
+            ticks: { color: textColor, font: { size: 8 } }, grid: { color: gridColor },
+            min: Math.max(0, Math.min(...ys) - 15),
+            max: Math.min(100, Math.max(...ys) + 10),
+          }
+        }
+      }
+    });
+
+    if (cfg.ref === 'designPVizInst') designPVizInst = inst;
+    else if (cfg.ref === 'designTVizInst') designTVizInst = inst;
+    else if (cfg.ref === 'designWVizInst') designWVizInst = inst;
+  });
+}
+
+// ===== 正确率柱状图 =====
 let designQualityInst = null;
 function renderDesignQualityChart(groups) {
-  const ctx = document.getElementById('designQualityChart').getContext('2d');
+  const canvas = document.getElementById('designQualityChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
   if (designQualityInst) designQualityInst.destroy();
   const colors = {good:'#4caf50',caution:'#ff9800',exclude:'#f44336'};
   const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
@@ -1740,12 +2781,22 @@ function renderDesignQualityChart(groups) {
     data: {
       labels: groups.map(g => `G${g.groupID}`),
       datasets: [
-        { label: '正确率 %', data: groups.map(g => g.accuracy), backgroundColor: groups.map(g => colors[g.quality]), yAxisID: 'y' },
+        {
+          label: '正确率 %',
+          data: groups.map(g => g.accuracy),
+          backgroundColor: groups.map(g => withAlpha(colors[g.quality], 0.8)),
+          borderColor: groups.map(g => hslBlend(colors[g.quality], -0.06)),
+          borderWidth: 1.5,
+        },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: legendColor } }, title: { display: true, text: '各组正确率', color: legendColor } },
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: legendColor } },
+        title: { display: true, text: '各组正确率', color: legendColor, font: { size: 11 } },
+      },
       scales: {
         y: { title: { display: true, text: '正确率 %', color: textColor }, max: 100, ticks: { color: textColor }, grid: { color: gridColor } },
         x: { ticks: { color: textColor }, grid: { color: gridColor } }
@@ -1754,9 +2805,12 @@ function renderDesignQualityChart(groups) {
   });
 }
 
+// ===== 遗漏率柱状图 =====
 let designSensitivityInst = null;
 function renderDesignSensitivityChart(groups) {
-  const ctx = document.getElementById('designSensitivityChart').getContext('2d');
+  const canvas = document.getElementById('designSensitivityChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
   if (designSensitivityInst) designSensitivityInst.destroy();
   const colors = {good:'#4caf50',caution:'#ff9800',exclude:'#f44336'};
   const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
@@ -1767,12 +2821,22 @@ function renderDesignSensitivityChart(groups) {
     data: {
       labels: groups.map(g => `G${g.groupID}`),
       datasets: [
-        { label: '遗漏率 %', data: groups.map(g => g.omissionRate), backgroundColor: groups.map(g => colors[g.quality] + '88'), borderColor: groups.map(g => colors[g.quality]), borderWidth: 1 },
+        {
+          label: '遗漏率 %',
+          data: groups.map(g => g.omissionRate),
+          backgroundColor: groups.map(g => withAlpha(colors[g.quality], 0.55)),
+          borderColor: groups.map(g => hslBlend(colors[g.quality], -0.06)),
+          borderWidth: 1.5,
+        },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: legendColor } }, title: { display: true, text: '遗漏率 (数据质量)', color: legendColor } },
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: legendColor } },
+        title: { display: true, text: '遗漏率 (数据质量)', color: legendColor, font: { size: 11 } },
+      },
       scales: {
         y: { title: { display: true, text: '遗漏率 %', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
         x: { ticks: { color: textColor }, grid: { color: gridColor } }
@@ -1780,6 +2844,617 @@ function renderDesignSensitivityChart(groups) {
     }
   });
 }
+
+// ===== 多组比较图表 =====
+let designCompareRTInst = null;
+let designCompareMetricInst = null;
+
+function renderCompareCharts() {
+  if (!appState.allData) return;
+  const cbs = document.querySelectorAll('.design-compare-cb:checked');
+  const selectedIds = Array.from(cbs).map(cb => parseInt(cb.value));
+  if (selectedIds.length < 1) {
+    [designCompareRTInst, designCompareMetricInst].forEach(inst => { if(inst) { inst.destroy(); inst = null; } });
+    return;
+  }
+
+  const summary = getDesignGroupSummary();
+  const selected = summary.filter(g => selectedIds.includes(g.groupID));
+  if (selected.length === 0) return;
+
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+  const palette = ['#ff9800','#2196f3','#4caf50','#f44336','#9c27b0','#00bcd4','#ffeb3b','#795548'];
+
+  // ===== 左侧: 正确率+遗漏率雷达对比 =====
+  const metricCtx = document.getElementById('designCompareMetricChart')?.getContext('2d');
+  if (metricCtx) {
+    if (designCompareMetricInst) designCompareMetricInst.destroy();
+    designCompareMetricInst = new Chart(metricCtx, {
+      type: 'bar',
+      data: {
+        labels: selected.map(g => `G${g.groupID}`),
+        datasets: [
+          {
+            label: '正确率 %',
+            data: selected.map(g => g.accuracy),
+            backgroundColor: selected.map((g,i) => withAlpha(palette[i % palette.length], 0.7)),
+            borderColor: selected.map((g,i) => palette[i % palette.length]),
+            borderWidth: 1.5,
+            yAxisID: 'y',
+          },
+          {
+            label: '遗漏率 %',
+            data: selected.map(g => g.omissionRate),
+            type: 'line',
+            borderColor: '#ff7043',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 5,
+            pointBackgroundColor: '#ff7043',
+            tension: 0.2,
+            yAxisID: 'y1',
+          },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: {
+          legend: { labels: { color: legendColor, usePointStyle: true } },
+          title: { display: true, text: '正确率 & 遗漏率对比', color: textColor, font: { size: 11 } },
+        },
+        scales: {
+          x: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor, display: false } },
+          y: {
+            type: 'linear', position: 'left',
+            title: { display: true, text: '正确率 %', color: textColor },
+            min: 0, max: 100, ticks: { color: textColor }, grid: { color: gridColor }
+          },
+          y1: {
+            type: 'linear', position: 'right',
+            title: { display: true, text: '遗漏率 %', color: '#ff7043' },
+            ticks: { color: '#ff7043' }, grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  // ===== 右侧: 设计参数雷达 (T, W, P) =====
+  const rtCtx = document.getElementById('designCompareRTChart')?.getContext('2d');
+  if (rtCtx) {
+    if (designCompareRTInst) designCompareRTInst.destroy();
+
+    const paramMax = { T: 520, W: 1600, P: 130 };
+    const paramLabels = ['刺激呈现 T(ms)', '反应窗口 W(ms)', '练习次数 P'];
+
+    designCompareRTInst = new Chart(rtCtx, {
+      type: 'radar',
+      data: {
+        labels: paramLabels,
+        datasets: selected.map((g, i) => ({
+          label: `G${g.groupID}`,
+          data: [
+            (g.T / paramMax.T * 100),
+            (g.W / paramMax.W * 100),
+            (g.P / paramMax.P * 100),
+          ],
+          backgroundColor: withAlpha(palette[i % palette.length], 0.15),
+          borderColor: palette[i % palette.length],
+          borderWidth: 2,
+          pointBackgroundColor: palette[i % palette.length],
+          pointRadius: 4,
+        }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: {
+          legend: { labels: { color: legendColor, usePointStyle: true, font: { size: 10 } } },
+          title: { display: true, text: '设计参数对比 (T / W / P)', color: textColor, font: { size: 11 } },
+        },
+        scales: {
+          r: {
+            min: 0, max: 100,
+            ticks: { display: false, stepSize: 25 },
+            pointLabels: { color: textColor, font: { size: 9 } },
+            grid: { color: gridColor },
+            angleLines: { color: gridColor },
+          }
+        }
+      }
+    });
+  }
+}
+
+// ==================== 3D DESIGN SPACE (ggcube coord_3d engine v2) ====================
+let d3dAnimFrame = null;
+const GROUP_PALETTE = ['#e91e63','#2196f3','#4caf50','#ff9800','#9c27b0','#00bcd4','#ffeb3b','#795548'];
+let d3dState = { pitch: 20, roll: -55, yaw: -25, persp: true, dist: 2, zoom: 1.0, autoRot: false, showIndividuals: false, dragging: false, lastX: 0, lastY: 0, autoAngle: 0, hitCache: [], dragSensitivity: 0.6 };
+
+function d3dHash01(seed) {
+  let h = 2166136261;
+  const s = String(seed);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 1000000) / 1000000;
+}
+
+function d3dJitter(seed, span) {
+  return (d3dHash01(seed) - 0.5) * span;
+}
+
+function d3dStableSample(items, maxCount) {
+  if (items.length <= maxCount) return items;
+  const step = items.length / maxCount;
+  return Array.from({ length: maxCount }, (_, i) => items[Math.floor(i * step)]);
+}
+
+function init3DControls() {
+  const sliders = { d3dPitch:'pitch', d3dRoll:'roll', d3dYaw:'yaw' };
+  for (const [id, key] of Object.entries(sliders)) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => {
+      d3dState[key] = parseFloat(el.value);
+      render3DDesignSpace();
+    });
+  }
+  const perspCb = document.getElementById('d3dPersp');
+  if (perspCb) perspCb.addEventListener('change', () => { d3dState.persp = perspCb.checked; render3DDesignSpace(); });
+  const autoCb = document.getElementById('d3dAutoRot');
+  if (autoCb) autoCb.addEventListener('change', () => {
+    d3dState.autoRot = autoCb.checked;
+    if (autoCb.checked) start3DAutoRotate(); else stop3DAutoRotate();
+  });
+  const zoomEl = document.getElementById('d3dZoom');
+  if (zoomEl) zoomEl.addEventListener('input', () => { d3dState.zoom = parseInt(zoomEl.value) / 100; render3DDesignSpace(); });
+  const indivCb = document.getElementById('d3dShowIndiv');
+  if (indivCb) indivCb.addEventListener('change', () => { d3dState.showIndividuals = indivCb.checked; render3DDesignSpace(); });
+  const mainCanvas = document.getElementById('design3DCanvas');
+  if (mainCanvas) {
+    mainCanvas.addEventListener('mousedown', (e) => {
+      d3dState.dragging = true;
+      d3dState.lastX = e.clientX;
+      d3dState.lastY = e.clientY;
+      e.preventDefault();
+    });
+    mainCanvas.addEventListener('mousemove', (e) => {
+      if (!d3dState.dragging) {
+        const rect = mainCanvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        update3DTooltip(mx, my);
+        return;
+      }
+      const dx = e.clientX - d3dState.lastX;
+      const dy = e.clientY - d3dState.lastY;
+      const sens = d3dState.dragSensitivity;
+
+      d3dState.yaw += dx * sens;
+      d3dState.pitch -= dy * sens;
+
+      d3dState.pitch = Math.max(-89, Math.min(89, d3dState.pitch));
+
+      let normYaw = ((d3dState.yaw % 360) + 540) % 360;
+      if (normYaw > 180) normYaw -= 360;
+      d3dState.yaw = normYaw;
+
+      d3dState.lastX = e.clientX;
+      d3dState.lastY = e.clientY;
+
+      document.getElementById('d3dPitch').value = Math.round(d3dState.pitch);
+      document.getElementById('d3dYaw').value = Math.round(d3dState.yaw);
+
+      render3DDesignSpace();
+      e.preventDefault();
+    });
+    mainCanvas.addEventListener('mouseleave', () => { const tip = document.getElementById('d3dTooltip'); if(tip) tip.style.display = 'none'; });
+    window.addEventListener('mouseup', () => { d3dState.dragging = false; });
+  }
+  const observer = new ResizeObserver(() => { if (getDesignGroupSummary().length > 0) render3DDesignSpace(); });
+  const container = document.getElementById('design3DCanvas')?.parentElement?.parentElement;
+  if (container) observer.observe(container);
+}
+
+function start3DAutoRotate() { stop3DAutoRotate(); const animate = () => { if (!d3dState.autoRot) return; d3dState.yaw = ((performance.now() * 0.03) % 360); if (d3dState.yaw > 180) d3dState.yaw -= 360; document.getElementById('d3dYaw').value = Math.round(d3dState.yaw); render3DDesignSpace(); d3dAnimFrame = requestAnimationFrame(animate); }; d3dAnimFrame = requestAnimationFrame(animate); }
+function stop3DAutoRotate() { if (d3dAnimFrame) { cancelAnimationFrame(d3dAnimFrame); d3dAnimFrame = null; } }
+
+function rotate3d(points, pitch, roll, yaw) {
+  const pr = pitch * Math.PI / 180, rr = roll * Math.PI / 180, yr = yaw * Math.PI / 180;
+  const cY = Math.cos(yr), sY = Math.sin(yr), cP = Math.cos(pr), sP = Math.sin(pr), cR = Math.cos(rr), sR = Math.sin(rr);
+  const R = [cY * cP, cY * sP * sR - sY * cR, cY * sP * cR + sY * sR, sY * cP, sY * sP * sR + cY * cR, sY * sP * cR - cY * sR, -sP, cP * sR, cP * cR];
+  return points.map(p => ({ x: p.x * R[0] + p.y * R[1] + p.z * R[2], y: p.x * R[3] + p.y * R[4] + p.z * R[5], z: p.x * R[6] + p.y * R[7] + p.z * R[8] }));
+}
+
+function project3D(points, dist, persp) {
+  return points.map(p => { const zOff = p.z + dist; const pf = persp ? (dist / zOff) : 1; const refPf = persp ? (dist / dist) : 1; return { x: p.x * pf, y: p.y * pf, z: p.z, depth: Math.sqrt(p.x*p.x + p.y*p.y + zOff*zOff), depthScale: refPf / pf }; });
+}
+
+function hslBlend3D(hexColor, depthScale) { const { r, g, b } = hexToRgb(hexColor); const { h, s, l } = rgbToHsl(r, g, b); const newL = Math.min(0.92, Math.max(0.08, l * (0.4 + 0.6 * depthScale))); const res = hslToRgb(h, s, newL); return rgbToHex(res.r, res.g, res.b); }
+
+function scaleToStandard3D(values, range) { const rng = range[1] - range[0] || 1; return values.map(v => (v - range[0]) / rng - 0.5); }
+
+function update3DTooltip(mx, my) {
+  const tip = document.getElementById('d3dTooltip'); if (!tip) return;
+  let found = null; let bestDist = 15 * 15;
+  for (const h of d3dState.hitCache) { const dx = mx - h.sx, dy = my - h.sy; const d = dx*dx + dy*dy; if (d < bestDist && d < h.r*h.r) { found = h; bestDist = d; } }
+  if (found) { tip.style.display = 'block'; tip.style.left = (found.sx + 18) + 'px'; tip.style.top = (found.sy - 10) + 'px';
+    const rtStr = found.meanRT > 0 ? `RT: <b>${(found.meanRT * 1000).toFixed(0)}ms</b> | ` : '';
+    tip.innerHTML = `<b>${found.label}</b> | ${found.quality}<br/>ACC: <b>${found.acc.toFixed(1)}%</b> | OM: <b>${found.om.toFixed(1)}%</b><br/>${rtStr}T=${found.T}ms W=${found.W}ms P=${found.P}`;
+  } else { tip.style.display = 'none'; }
+}
+
+function draw3DLabel(ctx, sx, sy, text, color, bgAlpha) {
+  ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+  const tm = ctx.measureText(text); const tw = tm.width, th = 12, pad = 3;
+  ctx.fillStyle = color.replace(')', `,${bgAlpha})`).replace('rgb', 'rgba');
+  if (color.startsWith('#')) { const {r,g,b}=hexToRgb(color); ctx.fillStyle = `rgba(${r},${g},${b},${bgAlpha})`; }
+  ctx.fillRect(sx - tw/2 - pad, sy - th/2 - pad, tw + pad*2, th + pad*2);
+  ctx.fillStyle = '#fff'; ctx.fillText(text, sx, sy + 4);
+}
+
+function render3DDesignSpace() {
+  const canvas = document.getElementById('design3DCanvas'); if (!canvas) return;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width; canvas.height = 380;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const scale = Math.min(W, H) * 0.36 * d3dState.zoom;
+  d3dState.hitCache = [];
+
+  ctx.clearRect(0, 0, W, H);
+  const bgColor = appState.theme === 'light' ? '#f5f7fa' : '#0f1923';
+  ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+
+  const summary = getDesignGroupSummary();
+  if (summary.length === 0) { ctx.fillStyle = '#90a4ae'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('请先加载数据 (点击左侧「加载所有数据进行分析」)', cx, cy); return; }
+
+  const groups = getFilteredDesignGroups();
+  const allGroups = getDesignGroupSummary();
+  const showGood = document.getElementById('designQualityGood')?.checked ?? true;
+  const showCaution = document.getElementById('designQualityCaution')?.checked ?? true;
+  const showExclude = document.getElementById('designQualityExclude')?.checked ?? true;
+  const allChecked = showGood && showCaution && showExclude;
+  const filterBadge = document.getElementById('d3dFilterBadge');
+  if (filterBadge) {
+    const filtered = allGroups.length - groups.length;
+    if (allChecked) {
+      filterBadge.innerHTML = '<span class="filter-badge all">全部组 (8)</span>';
+    } else if (filtered === allGroups.length) {
+      filterBadge.innerHTML = '<span class="filter-badge" style="background:rgba(244,67,54,0.2);color:#f44336;border:1px solid rgba(244,67,54,0.4);">无选中组</span>';
+    } else {
+      const activeQualities = [];
+      if (showGood) activeQualities.push('Good');
+      if (showCaution) activeQualities.push('Caution');
+      if (showExclude) activeQualities.push('Exclude');
+      filterBadge.innerHTML = `<span class="filter-badge active">${activeQualities.join('+')} | ${groups.length}/${allGroups.length}组</span>`;
+    }
+  }
+
+  const { pitch, roll, yaw } = d3dState;
+
+  const rangeGroups = allGroups.length ? allGroups : groups;
+  const tVals = rangeGroups.map(g => g.T); const wVals = rangeGroups.map(g => g.W); const pVals = rangeGroups.map(g => g.P);
+  const tRange = [Math.min(0, ...tVals) - 10, Math.max(...tVals) + 10];
+  const wRange = [Math.min(0, ...wVals) - 50, Math.max(...wVals, 1600) + 50];
+  const pRange = [Math.min(0, ...pVals) - 5, Math.max(...pVals, 130) + 10];
+
+  // Group color mapping
+  const getGroupColor = (gid) => GROUP_PALETTE[(gid - 1) % 8];
+  const qualityColors = { good: '#4caf50', caution: '#ff9800', exclude: '#f44336' };
+
+  // --- CUBE WIREFRAME ---
+  const corners = [[-0.5,-0.5,-0.5],[0.5,-0.5,-0.5],[0.5,0.5,-0.5],[-0.5,0.5,-0.5],[-0.5,-0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,0.5]];
+  const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+  const cornerPts = corners.map(c => ({ x: c[0], y: c[1], z: c[2] }));
+  const projectAll = (pts, p, r, ye) => { const rot = rotate3d(pts, p, r, ye); return project3D(rot, d3dState.dist, d3dState.persp); };
+
+  // --- REFERENCE GRID PLANES (ggcube panel background) ---
+  const halfCube = 0.5;
+  const gridSteps = 5;
+  const gridAlpha = 0.06;
+  for (let step = 0; step <= gridSteps; step++) {
+    const v = -halfCube + (halfCube * 2) * step / gridSteps;
+    const xzLines = [], yzLines = [];
+    for (let i = 0; i <= gridSteps; i++) {
+      const u = -halfCube + (halfCube * 2) * i / gridSteps;
+      xzLines.push({x:u,y:0,z:v}); yzLines.push({x:v,y:0,z:u});
+    }
+    const xzProj = projectAll(xzLines, pitch, roll, yaw);
+    const yzProj = projectAll(yzLines, pitch, roll, yaw);
+    ctx.strokeStyle = appState.theme === 'light' ? `rgba(0,0,0,${gridAlpha})` : `rgba(255,255,255,${gridAlpha*0.8})`;
+    ctx.lineWidth = 0.5;
+    xzProj.forEach((pt, i) => { if (i % 2 === 0) ctx.beginPath(); ctx.lineTo(cx + pt.x * scale, cy - pt.y * scale); if (i % 2 === 1) ctx.stroke(); });
+    yzProj.forEach((pt, i) => { if (i % 2 === 0) ctx.beginPath(); ctx.lineTo(cx + pt.x * scale, cy - pt.y * scale); if (i % 2 === 1) ctx.stroke(); });
+  }
+
+  // Wireframe
+  const wireProj = projectAll(cornerPts, pitch, roll, yaw);
+  ctx.strokeStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 0.8; ctx.setLineDash([4, 4]);
+  edges.forEach(([a, b]) => { ctx.beginPath(); ctx.moveTo(cx + wireProj[a].x * scale, cy - wireProj[a].y * scale); ctx.lineTo(cx + wireProj[b].x * scale, cy - wireProj[b].y * scale); ctx.stroke(); });
+  ctx.setLineDash([]);
+
+  // --- AXES with labels and units ---
+  const axisPts = projectAll([{x:0.55,y:0,z:0},{x:-0.55,y:0,z:0},{x:0,y:0.55,z:0},{x:0,y:-0.55,z:0},{x:0,y:0,z:0.55},{x:0,y:0,z:-0.55}], pitch, roll, yaw);
+  const axisColors = ['#ff9800','#2196f3','#4caf50'];
+  const axisLabels = ['T 刺激呈现 (ms)','W 反应窗口 (ms)','P 练习次数'];
+  const axisUnits = [tRange, wRange, pRange];
+
+  for (let a = 0; a < 3; a++) {
+    const posEnd = axisPts[a*2];
+    const posStart = axisPts[a*2+1];
+    ctx.strokeStyle = axisColors[a]; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + posEnd.x * scale, cy - posEnd.y * scale);
+    ctx.lineTo(cx + posStart.x * scale, cy - posStart.y * scale);
+    ctx.stroke();
+    const tipX = cx + posEnd.x * scale, tipY = cy - posEnd.y * scale;
+    const tipDx = (posEnd.x - posStart.x), tipDy = -(posEnd.y - posStart.y);
+    const tipLen = Math.sqrt(tipDx*tipDx + tipDy*tipDy) || 1;
+    const tipUx = tipDx / tipLen, tipUy = tipDy / tipLen;
+    const arrowSize = 8;
+    ctx.fillStyle = axisColors[a];
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - tipUx * arrowSize + tipUy * arrowSize * 0.5, tipY - tipUy * arrowSize - tipUx * arrowSize * 0.5);
+    ctx.lineTo(tipX - tipUx * arrowSize - tipUy * arrowSize * 0.5, tipY - tipUy * arrowSize + tipUx * arrowSize * 0.5);
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = axisColors[a]; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(axisLabels[a], tipX + tipUx * 12, tipY + tipUy * 12 - 4);
+
+    for (let step = 1; step <= 3; step++) {
+      const frac = step / 4;
+      const tickX = posStart.x + (posEnd.x - posStart.x) * frac;
+      const tickY = posStart.y + (posEnd.y - posStart.y) * frac;
+      const tx = cx + tickX * scale, ty = cy - tickY * scale;
+      ctx.fillStyle = axisColors[a]; ctx.globalAlpha = 0.6;
+      ctx.beginPath(); ctx.arc(tx, ty, 2, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+
+      const val = axisUnits[a][0] + (axisUnits[a][1] - axisUnits[a][0]) * frac;
+      let valStr;
+      if (a === 2) valStr = val.toFixed(0);
+      else valStr = (val / 1000).toFixed(1) + 's';
+      ctx.fillStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.35)';
+      ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(valStr, tx + tipUy * 10, ty - tipUx * 10);
+    }
+
+    const startX = cx + posStart.x * scale, startY = cy - posStart.y * scale;
+    const u = a === 0 ? axisUnits[a][0].toFixed(0) : (a === 2 ? axisUnits[a][0].toFixed(0) : (axisUnits[a][0]/1000).toFixed(1)+'s');
+    ctx.fillStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.4)';
+    ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(u, startX, startY + 14);
+  }
+
+  // --- ORIGIN MARKER ---
+  const origin = projectAll([{x:0,y:0,z:0}], pitch, roll, yaw)[0];
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx + origin.x * scale, cy - origin.y * scale, 3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+  // --- BUILD POINTS ---
+  const points3D = groups.map(g => ({
+    x: scaleToStandard3D([g.T], tRange)[0], y: scaleToStandard3D([g.W], wRange)[0], z0: scaleToStandard3D([g.P], pRange)[0],
+    r: Math.max(8, g.accuracy * 0.24 + 4), acc: g.accuracy, om: g.omissionRate, meanRT: g.meanRT,
+    groupID: g.groupID, color: getGroupColor(g.groupID), quality: g.quality, qualityColor: qualityColors[g.quality],
+    label: `G${g.groupID}`, T: g.T, W: g.W, P: g.P
+  }));
+
+  // build individual subject points
+  let indivPts = [];
+  if (d3dState.showIndividuals && appState.allData?.trials) {
+    const displayGroups = new Set(groups.map(g => g.groupID));
+    const allGroupSet = new Set(allGroups.map(g => g.groupID));
+    const subjData = {};
+    appState.allData.trials.forEach(t => {
+      if (t.stage !== 'formal' || !t.RT || !allGroupSet.has(t.groupID)) return;
+      if (!subjData[t.groupID]) subjData[t.groupID] = [];
+      subjData[t.groupID].push(t);
+    });
+    for (const [gid, trials] of Object.entries(subjData)) {
+      const gidNum = parseInt(gid);
+      const isDisplayed = displayGroups.has(gidNum);
+      const sample = d3dStableSample(trials, 300);
+      const gInfo = allGroups.find(g => g.groupID === gidNum);
+      if (!gInfo) continue;
+      const baseX = scaleToStandard3D([gInfo.T], tRange)[0];
+      const baseY = scaleToStandard3D([gInfo.W], wRange)[0];
+      const baseZ = scaleToStandard3D([gInfo.P], pRange)[0];
+      if (isDisplayed) {
+        sample.forEach(t => {
+          const rtFactor = Math.min(1, Math.max(-1, (t.RT * 1000 - 400) / 1200));
+          const seed = `${gidNum}-${t.subjectID}-${t.trialID}`;
+          indivPts.push({
+            x: baseX + d3dJitter(`${seed}-x`, 0.12),
+            y: baseY + rtFactor * 0.06 + d3dJitter(`${seed}-y`, 0.06),
+            z0: baseZ + d3dJitter(`${seed}-z`, 0.12),
+            r: 1.5 + d3dHash01(`${seed}-r`) * 1.5,
+            color: getGroupColor(gidNum),
+            groupID: gidNum, isDisplayed: true
+          });
+        });
+      } else {
+        const filteredSample = d3dStableSample(sample, 80);
+        filteredSample.forEach(t => {
+          const seed = `${gidNum}-${t.subjectID}-${t.trialID}`;
+          indivPts.push({
+            x: baseX + d3dJitter(`${seed}-x`, 0.12),
+            y: baseY + d3dJitter(`${seed}-y`, 0.08),
+            z0: baseZ + d3dJitter(`${seed}-z`, 0.12),
+            r: 1.0 + d3dHash01(`${seed}-r`) * 0.6,
+            color: getGroupColor(gidNum),
+            groupID: gidNum, isDisplayed: false
+          });
+        });
+      }
+    }
+  }
+
+  // --- DEPTH SORT & RENDER ---
+  const allPtsFlat = [
+    ...points3D.map(p => ({ ...p, z: p.z0, isIndiv: false })),
+    ...indivPts.map(p => ({ ...p, z: p.z0, isIndiv: true, acc: 0, om: 0, quality: '', qualityColor: '', label:'', T:0, W:0, P:0, meanRT: 0 }))
+  ];
+  const projAll = projectAll(allPtsFlat, pitch, roll, yaw);
+  const sorted = projAll.map((p, i) => ({ ...allPtsFlat[i], ...p, idx: i })).sort((a, b) => b.depth - a.depth);
+
+  sorted.forEach(({ x, y, depthScale, isIndiv, r, color, qualityColor, groupID, label, acc, om, quality, T, W, P, meanRT, isDisplayed }) => {
+    const sx = cx + x * scale, sy = cy - y * scale;
+    if (sx < -60 || sx > W + 60 || sy < -60 || sy > H + 60) return;
+
+    if (isIndiv) {
+      const alpha = isDisplayed === false ? 0.08 + depthScale * 0.05 : 0.22 + depthScale * 0.18;
+      ctx.fillStyle = withAlpha(color, alpha);
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); ctx.fill();
+    } else {
+      const litColor = hslBlend3D(color, depthScale);
+      const radius = r * (0.8 + 0.2 * depthScale);
+      const grad = ctx.createRadialGradient(sx - radius*0.25, sy - radius*0.3, radius*0.1, sx, sy, radius);
+      grad.addColorStop(0, hslBlend3D(color, Math.min(1, depthScale + 0.15)));
+      grad.addColorStop(0.6, litColor);
+      grad.addColorStop(1, hslBlend3D(color, Math.max(0.1, depthScale - 0.25)));
+      ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI*2);
+      ctx.fillStyle = grad; ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = appState.theme === 'light'
+        ? (quality === 'good' ? '#2e7d32' : quality === 'caution' ? '#e65100' : '#c62828')
+        : (quality === 'good' ? '#81c784' : quality === 'caution' ? '#ffb74d' : '#ef9a9a');
+      ctx.stroke();
+      const lblFontSize = Math.max(8, radius * 0.42);
+      ctx.fillStyle = appState.theme === 'light' ? '#1a1a2e' : '#e0e0e0';
+      ctx.font = `bold ${lblFontSize}px sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(acc.toFixed(0) + '%', sx, sy + 1);
+      ctx.fillStyle = withAlpha(color, 0.85); ctx.font = `bold ${Math.max(7, radius * 0.35)}px sans-serif`;
+      ctx.fillText('OM:' + om.toFixed(1) + '%', sx, sy - radius * 0.15 + 2);
+      ctx.fillStyle = color; ctx.font = `bold ${Math.max(7, radius * 0.4)}px sans-serif`;
+      ctx.fillText(label, sx, sy - radius - 3);
+
+      d3dState.hitCache.push({ sx, sy, r: radius, label, quality: quality === 'good' ? 'Good' : quality === 'caution' ? 'Caution' : 'Exclude', acc, om, T, W, P, meanRT });
+    }
+  });
+
+  render3DFaceProjections(summary, tRange, wRange, pRange);
+}
+
+function render3DFaceProjections(summary, tRange, wRange, pRange) {
+  const qualityColors = { good: '#4caf50', caution: '#ff9800', exclude: '#f44336' };
+  const showGood = document.getElementById('designQualityGood')?.checked ?? true;
+  const showCaution = document.getElementById('designQualityCaution')?.checked ?? true;
+  const showExclude = document.getElementById('designQualityExclude')?.checked ?? true;
+
+  const drawFace = (canvasId, xKey, yKey, xRange, yRange, title, xUnit, yUnit) => {
+    const canvas = document.getElementById(canvasId); if (!canvas) return;
+    const parent = canvas.parentElement;
+    const r = parent.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const bgColor = appState.theme === 'light' ? '#f0f3f8' : '#0d1b2a';
+    ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+    if (summary.length === 0) return;
+
+    const margin = { l: 34, r: 14, t: 20, b: 26 };
+    const pw = W - margin.l - margin.r, ph = H - margin.t - margin.b;
+
+    const txtC = appState.theme === 'light' ? '#3a5068' : '#b0bec5';
+    ctx.fillStyle = txtC; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(title, W/2, 12);
+
+    ctx.strokeStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)'; ctx.lineWidth = 0.5;
+    for (let i = 1; i <= 4; i++) {
+      const px = margin.l + pw * i / 5, py = margin.t + ph * i / 5;
+      ctx.beginPath(); ctx.moveTo(px, margin.t); ctx.lineTo(px, margin.t + ph); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(margin.l, py); ctx.lineTo(margin.l + pw, py); ctx.stroke();
+    }
+
+    const axesC = appState.theme === 'light' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)';
+    ctx.strokeStyle = axesC; ctx.lineWidth = 1;
+    ctx.strokeRect(margin.l, margin.t, pw, ph);
+
+    const isFiltered = (g) => {
+      if (g.quality === 'good' && !showGood) return true;
+      if (g.quality === 'caution' && !showCaution) return true;
+      if (g.quality === 'exclude' && !showExclude) return true;
+      return false;
+    };
+
+    const filtered = [];
+    summary.forEach(g => {
+      const groupColor = GROUP_PALETTE[(g.groupID - 1) % 8];
+      const nx = (g[xKey] - xRange[0]) / (xRange[1] - xRange[0] || 1);
+      const ny = 1 - (g[yKey] - yRange[0]) / (yRange[1] - yRange[0] || 1);
+      const sx = margin.l + nx * pw, sy = margin.t + ny * ph;
+      const radius = Math.max(3.5, g.accuracy * 0.12 + 2.5);
+      const filteredOut = isFiltered(g);
+
+      if (filteredOut) {
+        filtered.push({ sx, sy, radius, groupColor, g, qualityColor: qualityColors[g.quality] });
+        return;
+      }
+
+      ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI*2);
+      ctx.fillStyle = withAlpha(groupColor, 0.75); ctx.fill();
+      ctx.strokeStyle = qualityColors[g.quality]; ctx.lineWidth = 1.8; ctx.stroke();
+      ctx.fillStyle = appState.theme === 'light' ? '#1a1a2e' : '#e0e0e0';
+      ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`G${g.groupID}`, sx, sy - radius - 3);
+    });
+
+    filtered.forEach(({ sx, sy, radius, groupColor, g, qualityColor }) => {
+      ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI*2);
+      ctx.fillStyle = withAlpha(groupColor, 0.16); ctx.fill();
+      ctx.strokeStyle = withAlpha(qualityColor, 0.25); ctx.lineWidth = 1; ctx.stroke();
+      ctx.setLineDash([1.5, 2]); ctx.strokeStyle = withAlpha(qualityColor, 0.3); ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.arc(sx, sy, radius + 3, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
+    ctx.fillStyle = txtC; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(xUnit, margin.l + pw/2, H - 3);
+
+    ctx.save();
+    ctx.translate(7, margin.t + ph/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText(yUnit, 0, 0);
+    ctx.restore();
+
+    const xRangeSize = xRange[1] - xRange[0];
+    const yRangeSize = yRange[1] - yRange[0];
+    const xStep = xRangeSize >= 200 ? Math.ceil(xRangeSize / 5 / 100) * 100 : Math.ceil(xRangeSize / 5);
+    const yStep = yRangeSize >= 200 ? Math.ceil(yRangeSize / 5 / 100) * 100 : Math.ceil(yRangeSize / 5);
+
+    ctx.font = '7px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = txtC;
+    for (let v = xRange[0]; v <= xRange[1] + xStep * 0.5; v += xStep) {
+      if (Math.abs(v - xRange[0]) < 0.01 || Math.abs(v - xRange[1]) < 0.01) continue;
+      const px = margin.l + ((v - xRange[0]) / xRangeSize) * pw;
+      ctx.fillText(v.toFixed(0), px, margin.t + ph + 12);
+    }
+    ctx.fillText(xRange[0].toFixed(0), margin.l, margin.t + ph + 12);
+    ctx.fillText(xRange[1].toFixed(0), margin.l + pw, margin.t + ph + 12);
+
+    ctx.textAlign = 'right';
+    for (let v = yRange[0]; v <= yRange[1] + yStep * 0.5; v += yStep) {
+      if (Math.abs(v - yRange[0]) < 0.01 || Math.abs(v - yRange[1]) < 0.01) continue;
+      const py = margin.t + ph - ((v - yRange[0]) / yRangeSize) * ph;
+      ctx.fillText(v.toFixed(0), margin.l - 4, py + 3);
+    }
+    ctx.fillText(yRange[0].toFixed(0), margin.l - 4, margin.t + ph + 3);
+    ctx.fillText(yRange[1].toFixed(0), margin.l - 4, margin.t + 3);
+  };
+
+  drawFace('design3DTop', 'T', 'W', tRange, wRange, '俯视图: T × W 设计空间', 'T 刺激呈现 (ms)', 'W 窗口 (ms)');
+  drawFace('design3DFront', 'T', 'P', tRange, pRange, '前视图: T × P 设计空间', 'T 刺激呈现 (ms)', 'P 练习次数');
+  drawFace('design3DSide', 'W', 'P', wRange, pRange, '侧视图: W × P 设计空间', 'W 窗口 (ms)', 'P 练习次数');
+}
+
+function render3DDesignAll() { if (getDesignGroupSummary().length > 0) render3DDesignSpace(); }
 
 // ==================== INIT ====================
 async function init() {
