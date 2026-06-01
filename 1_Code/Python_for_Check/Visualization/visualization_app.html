@@ -158,6 +158,20 @@ button.danger { background: #d32f2f; border-color: #d32f2f; }
 .theme-toggle:hover { border-color: var(--accent); }
 .theme-toggle svg { width: 18px; height: 18px; fill: var(--accent); }
 .theme-toggle span { font-size: 0.8em; color: var(--text-secondary); }
+
+.multi-subj-section { min-height: 420px; }
+.multi-subj-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.multi-subj-chart { flex: 1; min-width: 280px; background: var(--bg-card); border-radius: 6px; padding: 10px; border: 1px solid var(--border); display: flex; flex-direction: column; }
+.multi-subj-chart canvas { max-height: 280px; min-height: 180px; }
+.multi-subj-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.multi-subj-legend { display: flex; gap: 12px; font-size: 0.72em; color: var(--text-secondary); margin-bottom: 6px; flex-wrap: wrap; }
+.multi-subj-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.multi-subj-summary { font-size: 0.72em; color: var(--text-secondary); margin-top: 6px; padding: 6px 8px; background: var(--bg-card); border-radius: 4px; border: 1px solid var(--border); line-height: 1.7; }
+.multi-subj-summary b { color: var(--accent); }
+.multi-subj-status { padding: 30px; text-align: center; color: var(--text-secondary); font-size: 0.85em; line-height: 1.8; }
+.multi-subj-loading { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 </style>
 </head>
 <body>
@@ -646,6 +660,46 @@ async function renderDataTab(lp, rp) {
         <canvas id="conditionBreakdownChart"></canvas>
       </div>
     </div>
+    <div class="chart-container multi-subj-section" style="flex:1.8;">
+      <div class="section-title">多被试对比分析 <span id="multiSubjTitle" style="font-size:0.8em;color:var(--text-secondary);"></span></div>
+      <div class="multi-subj-controls">
+        <select id="multiSubjGroupSelect" style="font-size:0.8em;">
+          <option value="">-- 选择组别加载 --</option>
+          ${[1,2,3,4,5,6,7,8].map(g => `<option value="${g}" ${appState.selectedGroups.has(g)?'selected':''}>G${g}</option>`).join('')}
+        </select>
+        <button id="btnLoadMultiSubj" style="font-size:0.78em;">加载并分析</button>
+        <label class="crf-filter-chip" id="chipMSOnlyCorrect" style="background:rgba(156,39,176,0.12);border:1px solid rgba(156,39,176,0.35);padding:2px 8px;border-radius:10px;cursor:pointer;font-size:0.75em;">
+          <input type="checkbox" id="filtMSOnlyCorrect" style="display:none;"> 仅正确试次</label>
+      </div>
+      <div class="multi-subj-legend">
+        <span><b>RT模式:</b> 🔵 Stranger RT − 🟠 Self RT → 正=Stranger更慢</span>
+        <span style="margin-left:12px;"><b>ACC模式:</b> 🟠 Self ACC − 🔵 Stranger ACC → 正=Self更准</span>
+      </div>
+      <div class="multi-subj-grid">
+        <div class="multi-subj-chart">
+          <div style="font-size:0.82em;font-weight:600;color:var(--accent);margin-bottom:4px;">📊 RT: Other − Self</div>
+          <div class="multi-subj-status" id="multiSubjRTStatus">
+            <div style="margin-bottom:6px;">点击"加载并分析"开始</div>
+          </div>
+          <canvas id="multiSubjRTChart" style="display:none;"></canvas>
+        </div>
+        <div class="multi-subj-chart">
+          <div style="font-size:0.82em;font-weight:600;color:var(--accent);margin-bottom:4px;">📊 ACC: Self − Other</div>
+          <div class="multi-subj-status" id="multiSubjACCStatus">
+            <div style="margin-bottom:6px;">点击"加载并分析"开始</div>
+          </div>
+          <canvas id="multiSubjACCChart" style="display:none;"></canvas>
+        </div>
+        <div class="multi-subj-chart">
+          <div style="font-size:0.82em;font-weight:600;color:var(--accent);margin-bottom:4px;">📊 SPE 综合对比</div>
+          <div class="multi-subj-status" id="multiSubjSPEStatus">
+            <div style="margin-bottom:6px;">点击"加载并分析"开始</div>
+          </div>
+          <canvas id="multiSubjSPEChart" style="display:none;"></canvas>
+        </div>
+      </div>
+      <div class="multi-subj-summary" id="multiSubjSummary" style="display:none;"></div>
+    </div>
   `;
 
   document.querySelectorAll('.group-tab').forEach(b => {
@@ -664,6 +718,32 @@ async function renderDataTab(lp, rp) {
   });
 
   document.getElementById('fileSearch').addEventListener('input', renderFileList);
+
+  document.getElementById('btnLoadMultiSubj').addEventListener('click', () => {
+    const gid = parseInt(document.getElementById('multiSubjGroupSelect').value);
+    if (!gid) { showToast('请先选择组别', 'error'); return; }
+    loadMultiSubjectData(gid);
+  });
+
+  document.getElementById('chipMSOnlyCorrect').addEventListener('click', (e) => {
+    e.preventDefault();
+    const cb = document.getElementById('filtMSOnlyCorrect');
+    cb.checked = !cb.checked;
+    const chip = document.getElementById('chipMSOnlyCorrect');
+    if (cb.checked) {
+      chip.style.background = 'rgba(156,39,176,0.2)';
+      chip.style.borderColor = 'rgba(156,39,176,0.5)';
+      chip.style.opacity = '1';
+    } else {
+      chip.style.background = 'rgba(156,39,176,0.06)';
+      chip.style.borderColor = 'rgba(128,128,128,0.2)';
+      chip.style.opacity = '0.55';
+    }
+    const gid = parseInt(document.getElementById('multiSubjGroupSelect').value);
+    if (gid && appState._multiSubjData) {
+      renderMultiSubjectComparison(appState._multiSubjData);
+    }
+  });
 
   if (appState.allFiles.length === 0) {
     const res = await fetchAPI('/api/files');
@@ -955,6 +1035,389 @@ function renderConditionBreakdown(selfRTs, strangerRTs) {
       }
     }
   });
+}
+
+let _msRTChart = null;
+let _msACCChart = null;
+let _msSPEChart = null;
+
+async function loadMultiSubjectData(groupId) {
+  const statusRT = document.getElementById('multiSubjRTStatus');
+  const statusACC = document.getElementById('multiSubjACCStatus');
+  const statusSPE = document.getElementById('multiSubjSPEStatus');
+  const summary = document.getElementById('multiSubjSummary');
+  const title = document.getElementById('multiSubjTitle');
+
+  const loadingHTML = '<div><span class="multi-subj-loading"></span>加载中...</div>';
+  statusRT.innerHTML = loadingHTML;
+  statusACC.innerHTML = loadingHTML;
+  statusSPE.innerHTML = loadingHTML;
+  summary.style.display = 'none';
+
+  try {
+    const resp = await fetchAPI(`/api/data/all?group=${groupId}`);
+    appState._multiSubjData = resp;
+    title.textContent = `— G${groupId}`;
+    renderMultiSubjectComparison(resp);
+  } catch (e) {
+    statusRT.innerHTML = '<div style="color:#f44336;">加载失败</div>';
+    statusACC.innerHTML = '<div style="color:#f44336;">加载失败</div>';
+    statusSPE.innerHTML = '<div style="color:#f44336;">加载失败</div>';
+    console.error('多被试数据加载失败:', e);
+  }
+}
+
+function renderMultiSubjectComparison(allData) {
+  if (!allData || !allData.trials || !allData.summary) return;
+
+  const onlyCorrect = document.getElementById('filtMSOnlyCorrect').checked;
+
+  const trials = allData.trials.filter(t => t.stage === 'formal' && t.RT !== null);
+  const subjects = allData.summary;
+
+  const subjStats = subjects.map(s => {
+    const subjTrials = trials.filter(t => t.subjectID === s.subjectID);
+    const selfTrials = subjTrials.filter(t => t.Identity === 'Self');
+    const strangerTrials = subjTrials.filter(t => t.Identity === 'Stranger');
+
+    let selfFiltered = selfTrials;
+    let strangerFiltered = strangerTrials;
+    if (onlyCorrect) {
+      selfFiltered = selfTrials.filter(t => t.Correct === 1);
+      strangerFiltered = strangerTrials.filter(t => t.Correct === 1);
+    }
+
+    const selfRTs = selfFiltered.map(t => t.RT);
+    const strangerRTs = strangerFiltered.map(t => t.RT);
+
+    const selfMeanRT = selfRTs.length > 0 ? selfRTs.reduce((a,b)=>a+b,0)/selfRTs.length : null;
+    const strangerMeanRT = strangerRTs.length > 0 ? strangerRTs.reduce((a,b)=>a+b,0)/strangerRTs.length : null;
+    const rtOtherMinusSelf = (strangerMeanRT !== null && selfMeanRT !== null) ? strangerMeanRT - selfMeanRT : null;
+
+    const selfCorrect = selfTrials.filter(t => t.Correct === 1).length;
+    const strangerCorrect = strangerTrials.filter(t => t.Correct === 1).length;
+    const selfResp = selfTrials.filter(t => t.RT !== null).length;
+    const strangerResp = strangerTrials.filter(t => t.RT !== null).length;
+    const selfACC = selfResp > 0 ? selfCorrect / selfResp * 100 : null;
+    const strangerACC = strangerResp > 0 ? strangerCorrect / strangerResp * 100 : null;
+    const accSelfMinusOther = (selfACC !== null && strangerACC !== null) ? selfACC - strangerACC : null;
+
+    const spe = accSelfMinusOther;
+
+    const omissionRate = s.omissionRate || 0;
+    const totalRTs = selfRTs.concat(strangerRTs);
+    const overallMeanRT = totalRTs.length > 0 ? totalRTs.reduce((a,b)=>a+b,0)/totalRTs.length : null;
+    const overallACC = s.accuracy || 0;
+
+    return {
+      subjectID: s.subjectID,
+      label: `S${s.subjectID}`,
+      nSelf: selfRTs.length,
+      nStranger: strangerRTs.length,
+      selfMeanRT, strangerMeanRT, rtOtherMinusSelf,
+      selfACC, strangerACC, accSelfMinusOther,
+      spe, omissionRate, overallMeanRT, overallACC,
+    };
+  }).filter(s => s.nSelf > 0 && s.nStranger > 0);
+
+  renderMultiSubjRT(subjStats);
+  renderMultiSubjACC(subjStats);
+  renderMultiSubjSPE(subjStats);
+  renderMultiSubjSummary(subjStats, onlyCorrect);
+
+  document.getElementById('multiSubjRTStatus').style.display = 'none';
+  document.getElementById('multiSubjACCStatus').style.display = 'none';
+  document.getElementById('multiSubjSPEStatus').style.display = 'none';
+  document.getElementById('multiSubjRTChart').style.display = '';
+  document.getElementById('multiSubjACCChart').style.display = '';
+  document.getElementById('multiSubjSPEChart').style.display = '';
+}
+
+function renderMultiSubjRT(subjStats) {
+  const canvas = document.getElementById('multiSubjRTChart');
+  if (!canvas) return;
+  if (_msRTChart) _msRTChart.destroy();
+
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const ctx = canvas.getContext('2d');
+
+  const sorted = [...subjStats].sort((a, b) => a.subjectID - b.subjectID);
+
+  _msRTChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(s => s.label),
+      datasets: [{
+        label: 'Stranger RT',
+        data: sorted.map(s => s.strangerMeanRT),
+        backgroundColor: 'rgba(33,150,243,0.7)',
+        borderColor: '#2196f3',
+        borderWidth: 1.5,
+        order: 1,
+      }, {
+        label: 'Self RT',
+        data: sorted.map(s => s.selfMeanRT),
+        backgroundColor: 'rgba(255,152,0,0.7)',
+        borderColor: '#ff9800',
+        borderWidth: 1.5,
+        order: 1,
+      }, {
+        label: 'Δ (Other−Self)',
+        data: sorted.map(s => s.rtOtherMinusSelf),
+        type: 'line',
+        borderColor: '#ce93d8',
+        backgroundColor: 'transparent',
+        borderWidth: 2.5,
+        pointRadius: 5,
+        pointBackgroundColor: sorted.map(s => s.rtOtherMinusSelf > 0 ? '#e91e63' : '#00bcd4'),
+        pointBorderColor: sorted.map(s => s.rtOtherMinusSelf > 0 ? '#e91e63' : '#00bcd4'),
+        tension: 0.2,
+        yAxisID: 'y1',
+        order: 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { labels: { color: textColor, usePointStyle: true, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const s = sorted[ctx.dataIndex];
+              if (ctx.dataset.label === 'Δ (Other−Self)') {
+                return [`Δ RT: ${s.rtOtherMinusSelf?.toFixed(3) || 'N/A'}s`,
+                  `Self: ${s.selfMeanRT?.toFixed(3) || '-'}s | Stranger: ${s.strangerMeanRT?.toFixed(3) || '-'}s`];
+              }
+              return `${ctx.dataset.label}: ${ctx.raw?.toFixed(3) || 'N/A'}s (n=${ctx.dataset.label==='Self RT'?s.nSelf:s.nStranger})`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor, display: false } },
+        y: {
+          type: 'linear', position: 'left',
+          title: { display: true, text: 'Mean RT (s)', color: textColor },
+          ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor }
+        },
+        y1: {
+          type: 'linear', position: 'right',
+          title: { display: true, text: 'Δ RT (s)', color: '#ce93d8' },
+          ticks: { color: '#ce93d8', font: { size: 9 } }, grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function renderMultiSubjACC(subjStats) {
+  const canvas = document.getElementById('multiSubjACCChart');
+  if (!canvas) return;
+  if (_msACCChart) _msACCChart.destroy();
+
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const ctx = canvas.getContext('2d');
+
+  const sorted = [...subjStats].sort((a, b) => a.subjectID - b.subjectID);
+
+  _msACCChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(s => s.label),
+      datasets: [{
+        label: 'Self ACC',
+        data: sorted.map(s => s.selfACC),
+        backgroundColor: 'rgba(255,152,0,0.7)',
+        borderColor: '#ff9800',
+        borderWidth: 1.5,
+        order: 1,
+      }, {
+        label: 'Stranger ACC',
+        data: sorted.map(s => s.strangerACC),
+        backgroundColor: 'rgba(33,150,243,0.7)',
+        borderColor: '#2196f3',
+        borderWidth: 1.5,
+        order: 1,
+      }, {
+        label: 'Δ (Self−Other)',
+        data: sorted.map(s => s.accSelfMinusOther),
+        type: 'line',
+        borderColor: '#ce93d8',
+        backgroundColor: 'transparent',
+        borderWidth: 2.5,
+        pointRadius: 5,
+        pointBackgroundColor: sorted.map(s => (s.accSelfMinusOther || 0) > 0 ? '#4caf50' : '#f44336'),
+        pointBorderColor: sorted.map(s => (s.accSelfMinusOther || 0) > 0 ? '#4caf50' : '#f44336'),
+        tension: 0.2,
+        yAxisID: 'y1',
+        order: 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { labels: { color: textColor, usePointStyle: true, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const s = sorted[ctx.dataIndex];
+              if (ctx.dataset.label === 'Δ (Self−Other)') {
+                return [`Δ ACC: ${s.accSelfMinusOther?.toFixed(1) || 'N/A'}%`,
+                  `Self: ${s.selfACC?.toFixed(1) || '-'}% | Stranger: ${s.strangerACC?.toFixed(1) || '-'}%`];
+              }
+              return `${ctx.dataset.label}: ${ctx.raw?.toFixed(1) || 'N/A'}% (n=${ctx.dataset.label==='Self ACC'?s.nSelf:s.nStranger})`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor, display: false } },
+        y: {
+          type: 'linear', position: 'left',
+          title: { display: true, text: 'Accuracy (%)', color: textColor },
+          min: 0, max: 100,
+          ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor }
+        },
+        y1: {
+          type: 'linear', position: 'right',
+          title: { display: true, text: 'Δ ACC (%)', color: '#ce93d8' },
+          ticks: { color: '#ce93d8', font: { size: 9 } }, grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function renderMultiSubjSPE(subjStats) {
+  const canvas = document.getElementById('multiSubjSPEChart');
+  if (!canvas) return;
+  if (_msSPEChart) _msSPEChart.destroy();
+
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const ctx = canvas.getContext('2d');
+
+  const sorted = [...subjStats].sort((a, b) => a.subjectID - b.subjectID);
+  const speValues = sorted.map(s => s.spe);
+
+  const colorGenerator = (val) => {
+    if (val === null || val === undefined) return '#888';
+    const normalized = Math.max(-1, Math.min(1, val / 30));
+    if (normalized > 0) {
+      const r = Math.round(76 + (244 - 76) * normalized);
+      const g = Math.round(175 + (67 - 175) * normalized);
+      const b = Math.round(80 + (54 - 80) * normalized);
+      return `rgb(${r},${g},${b})`;
+    } else {
+      const absN = Math.abs(normalized);
+      const r = Math.round(76 - (76 - 33) * absN);
+      const g = Math.round(175 - (175 - 150) * absN);
+      const b = Math.round(80 + (243 - 80) * absN);
+      return `rgb(${r},${g},${b})`;
+    }
+  };
+
+  _msSPEChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(s => s.label),
+      datasets: [{
+        label: 'SPE = Self ACC − Stranger ACC (%)',
+        data: sorted.map(s => s.spe),
+        backgroundColor: sorted.map(s => colorGenerator(s.spe)),
+        borderColor: sorted.map(s => colorGenerator(s.spe)),
+        borderWidth: 1.5,
+      }, {
+        label: 'Omission Rate',
+        data: sorted.map(s => s.omissionRate),
+        type: 'line',
+        borderColor: '#ff9800',
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 4,
+        pointBackgroundColor: '#ff9800',
+        borderDash: [4, 3],
+        tension: 0.2,
+        yAxisID: 'y1',
+        order: 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { labels: { color: textColor, usePointStyle: true, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const s = sorted[ctx.dataIndex];
+              if (ctx.dataset.label.startsWith('SPE')) {
+                return [`SPE: ${s.spe?.toFixed(1) || 'N/A'}%`,
+                  `Self ACC: ${s.selfACC?.toFixed(1) || '-'}% | Stranger ACC: ${s.strangerACC?.toFixed(1) || '-'}%`,
+                  `Omission: ${s.omissionRate?.toFixed(1) || '-'}%`];
+              }
+              return `Omission: ${ctx.raw?.toFixed(1) || 'N/A'}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor, display: false } },
+        y: {
+          type: 'linear', position: 'left',
+          title: { display: true, text: 'SPE (%)', color: textColor },
+          ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor }
+        },
+        y1: {
+          type: 'linear', position: 'right',
+          title: { display: true, text: 'Omission (%)', color: '#ff9800' },
+          ticks: { color: '#ff9800', font: { size: 9 } }, grid: { display: false },
+          min: 0,
+        }
+      }
+    }
+  });
+}
+
+function renderMultiSubjSummary(subjStats, onlyCorrect) {
+  const summaryEl = document.getElementById('multiSubjSummary');
+  if (!summaryEl) return;
+
+  const n = subjStats.length;
+  if (n === 0) {
+    summaryEl.style.display = 'block';
+    summaryEl.innerHTML = '<span style="color:#f44336;">无有效被试数据</span>';
+    return;
+  }
+
+  const rtDeltas = subjStats.map(s => s.rtOtherMinusSelf).filter(v => v !== null);
+  const accDeltas = subjStats.map(s => s.accSelfMinusOther).filter(v => v !== null);
+  const spes = subjStats.map(s => s.spe).filter(v => v !== null);
+  const omissions = subjStats.map(s => s.omissionRate);
+  const accs = subjStats.map(s => s.overallACC);
+
+  const mean = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  const std = arr => { const m = mean(arr); return Math.sqrt(arr.reduce((a,b)=>a+(b-m)*(b-m),0)/(arr.length-1||1)); };
+  const posCount = arr => arr.filter(v => v > 0).length;
+
+  summaryEl.style.display = 'block';
+  summaryEl.innerHTML = `
+    <b>组内汇总</b> (N=${n} 被试${onlyCorrect ? ', 仅正确试次' : ''})：
+    &nbsp;|&nbsp;
+    <span style="color:#2196f3;">RT Δ均值: <b>${mean(rtDeltas).toFixed(3)}s ± ${std(rtDeltas).toFixed(3)}</b></span>
+    &nbsp;|&nbsp;
+    <span style="color:#ff9800;">ACC Δ均值: <b>${mean(accDeltas).toFixed(1)}% ± ${std(accDeltas).toFixed(1)}</b></span>
+    &nbsp;|&nbsp;
+    SPE均值: <b>${mean(spes).toFixed(1)}%</b> (正向 ${posCount(spes)}/${n})
+    &nbsp;|&nbsp;
+    遗漏率均值: <b>${mean(omissions).toFixed(1)}%</b>
+    &nbsp;|&nbsp;
+    正确率均值: <b>${mean(accs).toFixed(1)}%</b>
+  `;
 }
 
 // ==================== HSL 颜色工具 (源自 ggcube 光照模型) ====================
