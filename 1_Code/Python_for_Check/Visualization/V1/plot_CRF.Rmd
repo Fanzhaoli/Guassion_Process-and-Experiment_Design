@@ -1,0 +1,310 @@
+---
+title: "8 Conditions CRF Analysis"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(ggplot2)
+# 禁用字符串自动转成因子类型
+options(stringsAsFactors = FALSE)
+```
+
+# 数据预处理
+
+## 匹配规则
+
+根据被试ID判断被试组（1-4循环）：
+
+| 被试ID | 被试组 | match刺激组合 | match按键 |
+|--------|--------|--------------|----------|
+| 1,5,9,13 | 1 | square+stranger, circle+self | f |
+| 2,6,10,14 | 2 | square+self, square+stranger | j |
+| 3,7,11,15 | 3 | square+stranger, circle+self | j |
+| 4,8,12,16 | 4 | square+self, square+stranger | f |
+
+```{r preprocess, results='asis'}
+# 原始CSV数据文件夹路径
+INPUT_DIR <- "/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/3_Study3_Empirical/data/raw/emp_data"
+# 预处理后输出CSV文件的路径
+OUTPUT_FILE <- "/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/daily-try/0527/preprocessed_data.csv"
+
+# 函数1：根据被试ID（subjectID）判断被试属于哪一组（1-4循环）
+# 例如：subjectID=1 → 组1，subjectID=2 → 组2，...subjectID=5 → 组1，以此类推
+get_subject_group <- function(subject_id) {
+  mod <- subject_id %% 4           # 对4取模，得到0-3
+  ifelse(mod == 0, 4, mod)         # 如果mod为0，则属于组4，否则就是mod本身
+}
+
+# 函数2：根据被试组号获取match对应的按键
+# 被试组1和4按f，被试组2和3按j
+get_match_key <- function(subject_group) {
+  ifelse(subject_group %in% c(1, 4), "f", "j")
+}
+
+# 函数3：根据被试组号判断刺激是否为match
+# 不同被试组对刺激（形状+标签）的定义不同：
+#   - 组1和3：square+stranger 或 circle+self 才是match
+#   - 组2和4：square+self 或 square+stranger 才是match
+is_stim_match <- function(shape, label, subject_group) {
+  if (subject_group %in% c(1, 3)) {
+    # 被试组1,3: match = (正方形 + 陌生人) 或 (圆形 + 自我)
+    (shape == "square" & label == "stranger") | (shape == "circle" & label == "self")
+  } else {
+    # 被试组2,4: match = (正方形 + 自我) 或 (正方形 + 陌生人)
+    (shape == "square" & label == "self") | (shape == "square" & label == "stranger")
+  }
+}
+
+# 从输入目录读取所有以 EXP_data_group 开头的CSV文件
+csv_files <- list.files(INPUT_DIR, pattern = "^EXP_data_group.*\\.csv$", full.names = TRUE)
+cat("找到", length(csv_files), "个数据文件\n")
+
+# 创建一个空列表，用于存放每个文件处理后的结果（稍后统一合并）
+all_data <- list()
+
+# 循环处理每一个CSV文件
+for (file_path in csv_files) {
+  
+  # 从文件名提取groupID（条件编号1-8）
+  filename <- basename(file_path)                           # 只保留文件名，去掉路径
+  group_match <- regmatches(filename, regexpr("group\\d+", filename))  # 匹配"group+数字"
+  group_id <- as.integer(sub("group", "", group_match))    # 去掉"group"，只保留数字
+  
+  # 读取CSV文件为数据框
+  raw_df <- read.csv(file_path, stringsAsFactors = FALSE)
+  
+  # 只保留正式实验（stage == "formal"）的数据，去掉练习阶段
+  df <- raw_df[raw_df$stage == "formal", ]
+  
+  # 如果该文件没有正式实验数据，跳过
+  if (nrow(df) == 0) next
+  
+  # 新增 groupID 列（条件编号）
+  df$groupID <- group_id
+  
+  # 根据subjectID计算被试组号（1-4循环）
+  df$subject_group <- get_subject_group(df$subjectID)
+  
+  # 根据被试组号和刺激信息，计算stim（match或mismatch）
+  df$stim <- mapply(is_stim_match, df$Shape, df$Label, df$subject_group)
+  df$stim <- ifelse(df$stim, "match", "mismatch")           # TRUE转"match"，FALSE转"mismatch"
+  
+  # 根据被试组号获取match对应按键，并判断被试实际按键是否为match
+  df$match_key <- get_match_key(df$subject_group)           # 当前条件下match应按的键
+  df$response <- ifelse(df$Response == df$match_key, "match", "mismatch")  # 实际按键是否为match
+  
+  # condition列等于groupID（条件编号）
+  df$condition <- df$groupID
+  
+  # 选择我们关心的列，保存到结果列表中
+  result_df <- df[, c("groupID", "subjectID", "Label", "stim", "response", "condition", 
+                       "Shape", "RT", "CorrectKey", "Response", "subject_group", "match_key")]
+  
+  all_data[[length(all_data) + 1]] <- result_df
+  cat("处理完成:", filename, "(", nrow(result_df), "条记录)\n")
+}
+
+# 将所有数据按行合并成一个大的数据框
+final_df <- do.call(rbind, all_data)
+rownames(final_df) <- NULL               # 清除行名（避免重复）
+
+cat("\n总共处理", nrow(final_df), "条记录\n")
+
+# 将合并后的数据保存为CSV文件
+write.csv(final_df, OUTPUT_FILE, row.names = FALSE)
+cat("预处理数据已保存到:", OUTPUT_FILE, "\n")
+
+# 打印基本统计信息，方便检查数据是否正常
+cat("\n=== 数据统计信息 ===\n")
+cat("条件数量:", length(unique(final_df$condition)), "\n")
+cat("被试数量:", length(unique(final_df$subjectID)), "\n")
+cat("RT有效数据:", sum(!is.na(final_df$RT)), "\n")
+cat("RT缺失数据:", sum(is.na(final_df$RT)), "\n")
+cat("\n每个条件的数据量:\n")
+print(table(final_df$condition))
+```
+
+## 加载预处理后的数据
+
+```{r load-preprocessed}
+# 读取刚才保存的预处理数据，准备进行CRF分析
+preprocessed_file <- "/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/daily-try/0527/preprocessed_data.csv"
+df <- read.csv(preprocessed_file, stringsAsFactors = FALSE)
+
+# 打印基本统计信息，确认数据读入正确
+cat("加载数据形状:", nrow(df), "行,", ncol(df), "列\n")
+cat("Label分布:\n")
+print(table(df$Label))
+cat("condition分布:\n")
+print(table(df$condition))
+```
+
+# CRF分析与绘图
+
+## 计算CRF数据并绘制图表
+
+CRF (Conditional Response Function) 的基本思路：
+1. 把数据**按条件（condition）**和**按标签（self/stranger）**分开
+2. 对每个子组按反应时间（RT）从快到慢排序
+3. 将排序后的数据**平均分成10个分箱**（bin）
+4. 计算每个分箱的平均RT和"选择match"的比例（p_match）
+5. 以平均RT为X轴、p_match为Y轴，画出CRF曲线
+
+```{r crf-all-in-one, fig.width=14, fig.height=8, dpi=300}
+# ==============================================================
+# 参数设置：分箱数
+# ==============================================================
+n_bins <- 10                                   # 将每个条件每个标签的数据平均分成10段
+# 创建空列表存储每行CRF计算结果，row_idx是当前写入位置
+all_rows <- list()
+row_idx <- 1
+
+#按条件遍历（Condition 1 ~ Condition 8）
+for (cond_val in sort(unique(df$condition))) {
+  
+  # 当前条件的名称，例如 "Condition 1"
+  cond_label <- paste0("Condition ", cond_val)
+  cat("\n处理:", cond_label, "\n")
+  
+  # 筛选当前条件且RT有效的数据（RT != "NA"）
+  cond_data <- df[df$condition == cond_val & df$RT != "NA", ]
+  cond_data$RT <- as.numeric(cond_data$RT)        # 把RT转成数值类型
+  cond_data <- cond_data[!is.na(cond_data$RT), ]  # 去掉转换后仍为NA的数据
+  
+  # 如果数据太少（不足10条），就跳过这个条件
+  if (nrow(cond_data) < 10) {
+    cat("  数据量不足:", nrow(cond_data), "\n")
+    next
+  }
+  
+  # 分别处理 self 和 stranger 两种标签
+  for (lbl in c("self", "stranger")) {
+    
+    # 筛选当前标签的数据
+    lbl_data <- cond_data[cond_data$Label == lbl, ]
+    
+    # 数据太少（不足5条）则跳过
+    if (nrow(lbl_data) < 5) {
+      cat("  ", lbl, ": 数据不足\n")
+      next
+    }
+    
+    # 按反应时间从小到大排序
+    lbl_data <- lbl_data[order(lbl_data$RT), ]
+    rt_vals <- lbl_data$RT
+    
+    # 用分位数生成分箱边界：把RT分成n_bins+1个等频段
+    breaks <- quantile(rt_vals, probs = seq(0, 1, length.out = n_bins + 1), na.rm = TRUE)
+    breaks <- unique(breaks)                     # 去掉重复的边界（避免因RT相同导致空箱）
+    
+    # 如果分箱不足3个，说明数据太集中，无法分析
+    if (length(breaks) < 3) {
+      cat("  ", lbl, ": 分箱不足\n")
+      next
+    }
+    
+    # 根据边界给每个数据点分配一个分箱编号
+    lbl_data$rt_bin <- cut(lbl_data$RT, breaks = breaks, include.lowest = TRUE)
+    
+    # 按分箱编号把数据切成多个子集（每个子集是一个bin）
+    bin_list <- split(lbl_data, lbl_data$rt_bin)
+    
+    # 计算每个分箱的统计量
+    for (b in names(bin_list)) {
+      bg <- bin_list[[b]]                          # 当前箱的数据
+      n <- nrow(bg)                                 # 当前箱试验次数
+      n_m <- sum(bg$response == "match")           # 当前箱中"match"反应的次数
+      
+      # 把计算结果打包成一行数据，加入列表
+      all_rows[[row_idx]] <- data.frame(
+        condition = cond_label,                     # 条件名称
+        Label = lbl,                                 # 标签（self/stranger）
+        n_trials = n,                                # 试验次数
+        mean_rt = mean(bg$RT),                       # 平均反应时间
+        n_match = n_m,                               # match反应次数
+        p_match = n_m / n,                           # match反应比例（概率）
+        stringsAsFactors = FALSE
+      )
+      row_idx <- row_idx + 1
+    }
+    
+    cat("  ", lbl, ": 生成", length(bin_list), "个分箱\n")
+  }
+}
+
+# 合并CRF数据并输出
+crf_df <- do.call(rbind, all_rows)
+rownames(crf_df) <- NULL
+
+cat("\n总共生成", nrow(crf_df), "行CRF数据\n")
+cat("CRF数据列名:", paste(names(crf_df), collapse=", "), "\n")
+cat("CRF数据condition唯一值:", paste(unique(crf_df$condition), collapse=", "), "\n")
+cat("CRF数据Label唯一值:", paste(unique(crf_df$Label), collapse=", "), "\n")
+
+# 将CRF计算结果保存成CSV，供后续分析和绘图使用
+write.csv(crf_df, "/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/daily-try/0527/8conditions_crf_all_data.csv", row.names = FALSE)
+
+# 绘制 2x4 布局的CRF图：8个子图分别对应8个条件
+# 每个子图中：红色=self，蓝色=stranger，横轴=平均RT，纵轴=p_match
+color_map <- c("self" = "#E74C3C", "stranger" = "#3498DB")   # 红色表示self，蓝色表示stranger
+
+fig1 <- ggplot(crf_df, aes(x = mean_rt, y = p_match, color = Label)) +
+  geom_line(linewidth = 1) +                                # 画折线
+  geom_point(size = 2.5, stroke = 0.5) +                    # 画数据点
+  geom_hline(yintercept = 0.5, linetype = "dashed", alpha = 0.5, color = "gray50") +  # 0.5虚线（随机水平）
+  facet_wrap(~condition, nrow = 2, ncol = 4, scales = "free_x") +   # 按条件分8张子图，x轴独立
+  scale_color_manual(values = color_map) +                  # 使用自定义颜色
+  labs(x = "Response Time (s)", y = "P(response=match)", color = "Label") +  # 坐标轴与图例标签
+  ylim(c(-0.05, 1.05)) +                                    # 纵轴固定在0~1之间（概率）
+  theme_bw() +                                              # 使用白底主题
+  theme(panel.grid.minor = element_blank(),                 # 去掉次级网格
+        strip.text = element_text(face = "bold", size = 11),# 子图标题加粗
+        axis.title = element_text(size = 10),               # 坐标轴标题
+        axis.text = element_text(size = 9),                  # 坐标轴刻度数字
+        legend.position = "top")                            # 图例放顶部
+
+print(fig1)
+ggsave("/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/daily-try/0527/8conditions_crf_all_2x4.png", fig1, width = 14, height = 8, dpi = 300)
+cat("CRF图已保存: 8conditions_crf_all_2x4.png\n")
+```
+
+## 绘制zbias/vbias对比合并图（4x2布局）
+
+这张图用 4行 x 2列 的布局展示8个条件的CRF曲线，便于整体比较。
+
+```{r plot-zbias-vbias, fig.width=10, fig.height=14, dpi=300}
+# 从刚才保存的CSV文件中重新读取CRF数据（演示如何跨代码块复用数据）
+crf_df2 <- read.csv("/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/daily-try/0527/8conditions_crf_all_data.csv", stringsAsFactors = FALSE)
+
+cat("crf_df2行数:", nrow(crf_df2), "\n")
+cat("crf_df2列名:", paste(names(crf_df2), collapse=", "), "\n")
+
+# 定义颜色：self=红色，stranger=蓝色
+color_map <- c("self" = "#E74C3C", "stranger" = "#3498DB")
+
+# 绘制4行2列布局，与上面不同在于每行只放2个条件，且子图尺寸更大
+fig2 <- ggplot(crf_df2, aes(x = mean_rt, y = p_match, color = Label)) +
+  geom_line(linewidth = 1.2) +                              # 比上面的线稍粗一点
+  geom_point(size = 2.5, stroke = 0.5) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", alpha = 0.5, color = "gray50") +
+  facet_wrap(~condition, nrow = 4, ncol = 2, scales = "free_x") +   # 4行2列布局
+  scale_color_manual(values = color_map) +
+  labs(x = "Response Time (s)", y = "P(response=match)", color = "Label",
+       title = "zbias vs vbias by Condition (self vs stranger)") +   # 加上大标题
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        strip.text = element_text(face = "bold", size = 10),
+        axis.title = element_text(size = 9),
+        axis.text = element_text(size = 8),
+        legend.position = "top",
+        plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+print(fig2)
+ggsave("/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/daily-try/0527/zbias_vbias_comparison_no_baseline.png", 
+       fig2, width = 10, height = 14, dpi = 300)
+cat("zbias/vbias对比图已保存: zbias_vbias_comparison_no_baseline.png\n")
+```

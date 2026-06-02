@@ -1,0 +1,194 @@
+---
+title: "CRF Analysis - Combined Plot"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(ggplot2)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+```
+
+# 合并CRF图（统一RT轴）
+
+## 设置参数和设计编号映射
+
+```{r define-params}
+# 设计编号与groupID的映射关系
+design_mapping <- data.frame(
+  groupID = c(1, 2, 3, 4, 5, 6, 7, 8),
+  Design = c("D1", "D2", "D3a", "D4a", "D5", "D6", "D3b", "D4b"),
+  P = c(0, 0, 120, 120, 8, 120, 120, 120),
+  T = c(30, 30, 30, 80, 100, 500, 30, 80),
+  W = c(300, 600, 600, 600, 1100, 1500, 800, 800)
+)
+
+# 生成设计标签：D1:P=0，T=30，W=300 格式（使用中文逗号）
+design_mapping$design_label <- paste0(design_mapping$Design, ":P=", design_mapping$P, 
+                                      "，T=", design_mapping$T, "，W=", design_mapping$W)
+
+# 定义8种更鲜艳、对比度更高的颜色
+color_palette <- c(
+  "#FF3B30",  # D1: 鲜艳红
+  "#007AFF",  # D2: 鲜艳蓝
+  "#34C759",  # D3a: 鲜艳绿
+  "#AF52DE",  # D4a: 鲜艳紫
+  "#FF9500",  # D5: 鲜艳橙
+  "#FFCC00",  # D6: 鲜艳黄
+  "#FF2D55",  # D3b: 鲜艳粉
+  "#5AC8FA"   # D4b: 鲜艳青
+)
+names(color_palette) <- design_mapping$Design
+
+# RT分箱设置：200ms到800ms，每25ms一个单位
+rt_start <- 200  # ms
+rt_end <- 800    # ms
+rt_step <- 25    # ms
+
+# 生成分箱边界（转换为秒）
+rt_breaks_ms <- seq(rt_start, rt_end + rt_step, by = rt_step)
+rt_breaks_sec <- rt_breaks_ms / 1000  # 转换为秒
+
+# 横坐标刻度：所有25ms间隔
+x_ticks <- seq(rt_start, rt_end, by = rt_step)
+
+cat("RT分箱边界（ms）:", paste(rt_breaks_ms, collapse=", "), "\n")
+cat("分箱数量:", length(rt_breaks_ms) - 1, "\n")
+cat("横坐标刻度:", paste(x_ticks, collapse=", "), "\n")
+```
+
+## 加载预处理数据并计算CRF
+
+```{r load-and-compute-crf}
+# 加载预处理数据
+preprocessed_file <- "/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/daily-try/0527/preprocessed_data.csv"
+df <- read.csv(preprocessed_file, stringsAsFactors = FALSE)
+
+# 只保留RT在范围内的数据
+df$RT_sec <- as.numeric(df$RT)  # 转换为秒
+df <- df[!is.na(df$RT_sec) & df$RT_sec >= rt_start/1000 & df$RT_sec <= rt_end/1000, ]
+
+# 合并设计映射信息
+df <- merge(df, design_mapping, by = "groupID", all.x = TRUE)
+
+# 创建空数据框存储CRF结果
+crf_results <- data.frame(
+  Design = character(),
+  design_label = character(),
+  Label = character(),
+  mean_rt_ms = numeric(),
+  p_match = numeric(),
+  n_trials = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# 按设计和标签分组计算CRF
+for (design in design_mapping$Design) {
+  design_data <- df[df$Design == design, ]
+  
+  for (lbl in c("self", "stranger")) {
+    lbl_data <- design_data[design_data$Label == lbl, ]
+    
+    if (nrow(lbl_data) < 5) {
+      cat("Design", design, lbl, ": 数据不足\n")
+      next
+    }
+    
+    # 分配到预定义的RT分箱
+    lbl_data$rt_bin <- cut(lbl_data$RT_sec, breaks = rt_breaks_sec, include.lowest = TRUE)
+    
+    # 计算每个分箱的统计量
+    bin_stats <- aggregate(
+      list(n_trials = lbl_data$RT_sec, n_match = lbl_data$response == "match"),
+      by = list(rt_bin = lbl_data$rt_bin),
+      FUN = function(x) c(n = length(x), sum = sum(x))
+    )
+    
+    # 提取统计量
+    bin_stats$n_trials <- bin_stats$n_trials[, "n"]
+    bin_stats$n_match <- bin_stats$n_match[, "sum"]
+    bin_stats$p_match <- bin_stats$n_match / bin_stats$n_trials
+    
+    # 获取每个分箱的平均RT
+    rt_means <- aggregate(RT_sec ~ rt_bin, data = lbl_data, FUN = mean)
+    bin_stats <- merge(bin_stats, rt_means, by = "rt_bin")
+    
+    # 转换为毫秒
+    bin_stats$mean_rt_ms <- bin_stats$RT_sec * 1000
+    
+    # 添加设计和标签信息
+    bin_stats$Design <- design
+    bin_stats$design_label <- design_mapping$design_label[design_mapping$Design == design]
+    bin_stats$Label <- lbl
+    
+    # 只保留有数据的分箱
+    bin_stats <- bin_stats[bin_stats$n_trials >= 1, ]
+    
+    # 添加到结果
+    crf_results <- rbind(crf_results, bin_stats[, c("Design", "design_label", "Label", "mean_rt_ms", "p_match", "n_trials")])
+  }
+  
+  cat("Design", design, ": 处理完成\n")
+}
+
+cat("\nCRF结果形状:", nrow(crf_results), "行\n")
+```
+
+## 绘制合并CRF图
+
+```{r plot-combined-crf, fig.width=12, fig.height=6, dpi=300}
+# 创建绘图数据：为每个设计创建self（实线）和stranger（虚线）
+plot_df <- crf_results
+
+# 绘制合并图
+fig <- ggplot(plot_df, aes(x = mean_rt_ms, y = p_match)) +
+  # 为每个设计绘制self（实线）和stranger（更密的虚线），线更细
+  geom_line(aes(color = Design, linetype = Label), linewidth = 0.7) +
+  geom_point(aes(color = Design, shape = Label), size = 1.5) +
+  # 添加0.5基准线
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "gray50", alpha = 0.5) +
+  # 设置颜色
+  scale_color_manual(values = color_palette, name = "Design", labels = design_mapping$design_label) +
+  # 设置线型：self实线，stranger使用更密的点线
+  scale_linetype_manual(values = c("self" = "solid", "stranger" = "dotted"), name = "Label") +
+  scale_shape_manual(values = c("self" = 19, "stranger" = 17), name = "Label") +
+  # 设置横坐标：200-800ms，每25ms一个刻度
+  scale_x_continuous(breaks = x_ticks, limits = c(rt_start, rt_end)) +
+  # 设置纵坐标：0-1，每0.1一个刻度
+  scale_y_continuous(breaks = seq(0, 1, by = 0.1), limits = c(-0.02, 1.02)) +
+  # 设置坐标轴标签
+  labs(x = "Response Time (ms)", y = "P(response=match)",
+       title = "CRF Curves for All Conditions (200-800ms)") +
+  theme_bw() +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    legend.margin = margin(),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    axis.title = element_text(size = 11),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_text(angle = 45, hjust = 1)  # 横坐标标签旋转45度便于阅读
+  ) +
+  guides(
+    color = guide_legend(nrow = 4),
+    linetype = guide_legend(order = 1),
+    shape = guide_legend(order = 1)
+  )
+
+print(fig)
+
+# 保存图片
+ggsave("/Users/fanzhaoli/Desktop/Lab/DesignSpace_CP/daily-try/0602/combined_crf_all_conditions.png", 
+       fig, width = 12, height = 6, dpi = 300)
+cat("合并CRF图已保存\n")
+```
+
+## 输出设计标签信息
+
+```{r output-design-labels}
+cat("设计标签对应关系:\n")
+print(design_mapping[, c("groupID", "Design", "design_label")])
+```

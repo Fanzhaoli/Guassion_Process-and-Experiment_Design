@@ -269,7 +269,8 @@ function updateChartTheme() {
   const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
   
   [rtChart, crfChartInst, speChartInst, designBubbleInst, designQualityInst, designSensitivityInst,
-   designWDistInst, designTDistInst, designPVizInst, designTVizInst, designWVizInst, conditionBreakdownChart, designCompareRTInst, designCompareMetricInst].forEach(chart => {
+   designWDistInst, designTDistInst, designPVizInst, designTVizInst, designWVizInst, conditionBreakdownChart, designCompareRTInst, designCompareMetricInst,
+   rtTrialChart, densityChart, omissionChart, dataCRFChart, dataSPEChart].forEach(chart => {
     if (chart && chart.options) {
       if (chart.options.scales) {
         Object.values(chart.options.scales).forEach(scale => {
@@ -646,7 +647,7 @@ async function renderDataTab(lp, rp) {
       </div>
     </div>
     <div class="chart-container" style="flex:1;">
-      <div class="section-title">RT分布 — Self vs Stranger (ggcube 照明分色风格)</div>
+      <div class="section-title">RT分布 — Self vs Stranger</div>
       <div style="display:flex;gap:8px;">
         <div style="flex:2;"><canvas id="rtHistogram"></canvas></div>
         <div style="flex:1;font-size:0.72em;color:var(--text-secondary);line-height:1.8;" id="rtSummaryStats">
@@ -658,6 +659,45 @@ async function renderDataTab(lp, rp) {
       <div class="section-title">条件分解 — Matching/NonMatching × Self/Stranger</div>
       <div style="position:relative;height:calc(100% - 30px);">
         <canvas id="conditionBreakdownChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-container" style="flex:1;min-height:200px;max-height:280px;">
+      <div class="section-title">RT逐试次变化 — Self vs Stranger</div>
+      <div style="position:relative;height:calc(100% - 30px);">
+        <canvas id="rtTrialChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-container" style="flex:1.2;min-height:240px;max-height:320px;">
+      <div class="section-title">密度分布 — Matching/NonMatching × Self/Stranger</div>
+      <div style="position:relative;height:calc(100% - 30px);">
+        <canvas id="densityChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-container" style="flex:0.8;min-height:180px;max-height:260px;">
+      <div class="section-title">遗漏(Omission)数据 — 按条件分组</div>
+      <div style="position:relative;height:calc(100% - 30px);">
+        <canvas id="omissionChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-container" style="flex:1.2;min-height:240px;max-height:320px;">
+      <div class="section-title">CRF 正确率-反应时函数 — 分位数×ACC</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.72em;">
+        <span style="color:var(--text-secondary);">分位数:</span>
+        <select id="dataCRFQuantile" style="font-size:0.8em;padding:2px 6px;">
+          <option value="5" selected>5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="10">10</option></select>
+        <span style="margin-left:12px;color:var(--text-secondary);">━ 实线=Matching</span>
+        <span style="color:var(--text-secondary);">- - 虚线=NonMatching</span>
+        <span style="color:var(--text-secondary);">● Self</span>
+        <span style="color:var(--text-secondary);">▲ Stranger</span>
+      </div>
+      <div style="position:relative;height:calc(100% - 50px);">
+        <canvas id="dataCRFChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-container" style="flex:0.8;min-height:180px;max-height:260px;">
+      <div class="section-title">SPE 自我优势效应 — 分位数×ACC差值</div>
+      <div style="position:relative;height:calc(100% - 30px);">
+        <canvas id="dataSPEChart"></canvas>
       </div>
     </div>
     <div class="chart-container multi-subj-section" style="flex:1.8;">
@@ -745,6 +785,8 @@ async function renderDataTab(lp, rp) {
     }
   });
 
+  document.getElementById('dataCRFQuantile').addEventListener('change', () => { renderDataCRF(); renderDataSPE(); });
+
   if (appState.allFiles.length === 0) {
     const res = await fetchAPI('/api/files');
     appState.allFiles = res.files;
@@ -783,6 +825,11 @@ async function loadDataFile(filename) {
   renderDataPreview();
   renderRTDistribution();
   updateDataStats();
+  renderRTTrialSequence();
+  renderDensityDistribution();
+  renderOmissionData();
+  renderDataCRF();
+  renderDataSPE();
 }
 
 function renderDataPreview() {
@@ -832,6 +879,11 @@ function updateDataStats() {
 
 let rtChart = null;
 let conditionBreakdownChart = null;
+let rtTrialChart = null;
+let densityChart = null;
+let omissionChart = null;
+let dataCRFChart = null;
+let dataSPEChart = null;
 
 function gaussianKDE(data, bandwidth, nPoints) {
   const sorted = [...data].sort((a, b) => a - b);
@@ -878,48 +930,89 @@ function renderRTDistribution() {
     return h;
   };
 
+  // 正态分布拟合 (替代 KDE) — 更稳定、可解释
+  const normalFit = (data, histData, histMax) => {
+    if (data.length < 3) return [];
+    const n = data.length;
+    const mu = data.reduce((s, v) => s + v, 0) / n;
+    const sigma = Math.sqrt(data.reduce((s, v) => s + (v - mu) * (v - mu), 0) / (n - 1));
+    const points = [];
+    const step = (max - min) / 100;
+    for (let x = min - sigma; x <= max + sigma; x += step) {
+      const z = (x - mu) / sigma;
+      const density = Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(2 * Math.PI));
+      points.push({ x, y: density * histMax * bw });
+    }
+    return points;
+  };
+
+  const histSelf = hist(selfRTs);
+  const histStranger = hist(strangerRTs);
+  const histMax = Math.max(...histSelf, ...histStranger, 1);
+  const normSelf = normalFit(selfRTs, histSelf, histMax);
+  const normStranger = normalFit(strangerRTs, histStranger, histMax);
+
+  // 中位数标记点
+  const median = (arr) => { const s = [...arr].sort((a,b)=>a-b); const mid = Math.floor(s.length/2); return s.length%2===1 ? s[mid] : (s[mid-1]+s[mid])/2; };
+  const medSelf = median(selfRTs), medStranger = median(strangerRTs);
+
   const ctx = document.getElementById('rtHistogram').getContext('2d');
   if (rtChart) rtChart.destroy();
   const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
   const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
 
-  const kdeSelf = gaussianKDE(selfRTs, null, 80);
-  const kdeStranger = gaussianKDE(strangerRTs, null, 80);
-  const histMax = Math.max(...hist(selfRTs), ...hist(strangerRTs), 1);
-  const kdeScale = histMax / Math.max(kdeSelf.reduce((m,d)=>Math.max(m,d.y),0), kdeStranger.reduce((m,d)=>Math.max(m,d.y),0), 0.001);
+  const labels = Array.from({length:bins}, (_,i) => (min+i*bw).toFixed(2));
 
   rtChart = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: Array.from({length:bins}, (_,i) => (min+i*bw).toFixed(2)),
+      labels,
       datasets: [
-        { label: 'Self', data: hist(selfRTs), backgroundColor: 'rgba(255,152,0,0.5)', borderColor: '#ff9800', borderWidth: 1, order: 1 },
-        { label: 'Stranger', data: hist(strangerRTs), backgroundColor: 'rgba(33,150,243,0.5)', borderColor: '#2196f3', borderWidth: 1, order: 1 },
-        { label: 'Self KDE', data: kdeSelf.map(d => ({x: d.x, y: d.y * kdeScale})), type: 'line', borderColor: '#ff9800', backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 0, tension: 0.3, order: 0, fill: false },
-        { label: 'Stranger KDE', data: kdeStranger.map(d => ({x: d.x, y: d.y * kdeScale})), type: 'line', borderColor: '#2196f3', backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 0, tension: 0.3, order: 0, fill: false },
+        { label: 'Self', data: histSelf, backgroundColor: 'rgba(255,152,0,0.55)', borderColor: '#ff9800', borderWidth: 0.5, order: 2 },
+        { label: 'Stranger', data: histStranger, backgroundColor: 'rgba(33,150,243,0.45)', borderColor: '#2196f3', borderWidth: 0.5, order: 2 },
+        { label: 'Self 拟合 (N)', data: normSelf.map(d => ({x: d.x, y: d.y})), type: 'line', borderColor: '#e65100', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.25, order: 0, fill: false },
+        { label: 'Stranger 拟合 (N)', data: normStranger.map(d => ({x: d.x, y: d.y})), type: 'line', borderColor: '#1565c0', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.25, order: 0, fill: false },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       animation: { duration: 300 },
       plugins: {
-        legend: { labels: { color: textColor, usePointStyle: true, filter: item => !item.text.includes('KDE') } },
+        legend: { labels: { color: textColor, usePointStyle: true, filter: item => !item.text.includes('拟合') } },
         tooltip: { mode: 'index', intersect: false }
       },
       scales: {
         x: { stacked: false, title: { display: true, text: 'RT (秒)', color: textColor }, ticks: { color: textColor, maxTicksLimit: 12 }, grid: { color: gridColor } },
         y: { stacked: false, title: { display: true, text: '试次频数', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } }
       }
-    }
+    },
+    plugins: [{
+      id: 'rtMedianMarkers',
+      afterDraw(chart) {
+        const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+        const drawMarker = (rtVal, color, label) => {
+          const px = x.getPixelForValue(rtVal);
+          if (px < chart.chartArea.left || px > chart.chartArea.right) return;
+          ctx.save();
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.7;
+          ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke();
+          ctx.fillStyle = color; ctx.font = 'bold 9px sans-serif';
+          ctx.fillText(label, px + 3, top + 14);
+          ctx.restore();
+        };
+        if (selfRTs.length) drawMarker(medSelf, '#e65100', `Md=${medSelf.toFixed(2)}s`);
+        if (strangerRTs.length) drawMarker(medStranger, '#1565c0', `Md=${medStranger.toFixed(2)}s`);
+      }
+    }]
   });
 
-  // ggcube 风格: RT统计摘要
   const stats = (arr) => {
     const sorted = [...arr].sort((a,b)=>a-b);
     const n = sorted.length;
     const mean = arr.reduce((s,v)=>s+v,0)/n;
-    const median = n%2===1 ? sorted[(n-1)/2] : (sorted[n/2-1]+sorted[n/2])/2;
-    return {mean, median, n};
+    const med = median(arr);
+    return { mean, median: med, n };
   };
   const selfStats = stats(selfRTs);
   const strangerStats = stats(strangerRTs);
@@ -932,6 +1025,9 @@ function renderRTDistribution() {
     <div>Median: <b>${strangerStats.median.toFixed(2)}s</b></div>
     <div style="margin-top:8px;color:var(--accent);">
       Δ Mean: <b>${(selfStats.mean - strangerStats.mean).toFixed(2)}s</b> | Δ Median: <b>${(selfStats.median - strangerStats.median).toFixed(2)}s</b>
+    </div>
+    <div style="margin-top:4px;font-size:0.68em;color:var(--text-secondary);">
+      --- 虚线 = 中位数 | 曲线 = 正态分布拟合(N)
     </div>
   `;
 
@@ -1034,6 +1130,469 @@ function renderConditionBreakdown(selfRTs, strangerRTs) {
         }
       }
     }
+  });
+}
+
+function renderRTTrialSequence() {
+  if (!appState.currentData) return;
+  const formal = appState.currentData.trials.filter(t => t.RT !== null && t.stage === 'formal');
+  if (formal.length === 0) return;
+
+  const canvas = document.getElementById('rtTrialChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (rtTrialChart) rtTrialChart.destroy();
+
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  const selfData = formal.filter(t => t.Identity === 'Self');
+  const strangerData = formal.filter(t => t.Identity === 'Stranger');
+
+  rtTrialChart = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: 'Self',
+          data: selfData.map(t => ({ x: t.trialID, y: t.RT })),
+          backgroundColor: 'rgba(255,152,0,0.7)',
+          borderColor: '#ff9800',
+          pointRadius: 4,
+          pointHoverRadius: 7,
+          order: 1,
+        },
+        {
+          label: 'Stranger',
+          data: strangerData.map(t => ({ x: t.trialID, y: t.RT })),
+          backgroundColor: 'rgba(33,150,243,0.7)',
+          borderColor: '#2196f3',
+          pointRadius: 4,
+          pointHoverRadius: 7,
+          order: 1,
+        },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: legendColor, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              return `${ctx.dataset.label}: RT=${ctx.raw.y.toFixed(3)}s, Trial=${ctx.raw.x}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: '试次编号', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor }
+        },
+        y: {
+          title: { display: true, text: 'RT (秒)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor }
+        }
+      }
+    }
+  });
+}
+
+function renderDensityDistribution() {
+  if (!appState.currentData) return;
+  const formal = appState.currentData.trials.filter(t => t.RT !== null && t.stage === 'formal');
+  if (formal.length === 0) return;
+
+  const canvas = document.getElementById('densityChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (densityChart) densityChart.destroy();
+
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  const categories = [
+    { key: 'Matching×Self', filter: t => t.Condition === 'Matching' && t.Identity === 'Self', color: 'rgba(76,175,80,0.5)', border: '#4caf50', fitColor: '#2e7d32' },
+    { key: 'Matching×Stranger', filter: t => t.Condition === 'Matching' && t.Identity === 'Stranger', color: 'rgba(129,199,132,0.5)', border: '#81c784', fitColor: '#388e3c' },
+    { key: 'NonMatching×Self', filter: t => t.Condition === 'NonMatching' && t.Identity === 'Self', color: 'rgba(244,67,54,0.5)', border: '#f44336', fitColor: '#c62828' },
+    { key: 'NonMatching×Stranger', filter: t => t.Condition === 'NonMatching' && t.Identity === 'Stranger', color: 'rgba(229,115,115,0.5)', border: '#e57373', fitColor: '#b71c1c' },
+  ];
+
+  const allRTs = formal.map(t => t.RT);
+  const min = Math.min(...allRTs), max = Math.max(...allRTs);
+  const bins = 20;
+  const bw = (max - min) / bins;
+
+  const histData = categories.map(c => {
+    const subset = formal.filter(c.filter);
+    const rts = subset.map(t => t.RT);
+    const hist = new Array(bins).fill(0);
+    rts.forEach(v => { const idx = Math.min(Math.floor((v - min) / bw), bins - 1); hist[idx]++; });
+    return { rts, hist };
+  });
+
+  const histMax = Math.max(...histData.map(d => Math.max(...d.hist)), 1);
+
+  const normalFit = (data) => {
+    if (data.length < 3) return [];
+    const n = data.length;
+    const mu = data.reduce((s, v) => s + v, 0) / n;
+    const sigma = Math.sqrt(data.reduce((s, v) => s + (v - mu) * (v - mu), 0) / (n - 1 || 1));
+    const points = [];
+    const step = (max - min) / 100;
+    for (let x = min - sigma; x <= max + sigma; x += step) {
+      const z = (x - mu) / sigma;
+      const density = Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(2 * Math.PI));
+      points.push({ x, y: density * histMax * bw });
+    }
+    return points;
+  };
+
+  const barDatasets = categories.map((c, i) => ({
+    label: c.key,
+    data: histData[i].hist.map((v, j) => ({ x: min + (j + 0.5) * bw, y: v })),
+    backgroundColor: c.color,
+    borderColor: c.border,
+    borderWidth: 1,
+    order: 2,
+    type: 'bar',
+    barPercentage: 0.95,
+    categoryPercentage: 1,
+  }));
+
+  const fitDatasets = categories.map((c, i) => {
+    const fit = normalFit(histData[i].rts);
+    return {
+      label: c.key + ' 拟合',
+      data: fit.map(d => ({ x: d.x, y: d.y })),
+      borderColor: c.fitColor,
+      backgroundColor: 'transparent',
+      borderWidth: 1.8,
+      borderDash: [5, 3],
+      pointRadius: 0,
+      tension: 0.25,
+      fill: false,
+      type: 'line',
+      order: 0,
+    };
+  });
+
+  densityChart = new Chart(ctx, {
+    data: { datasets: [...barDatasets, ...fitDatasets] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: {
+          labels: {
+            color: legendColor, usePointStyle: true, font: { size: 10 },
+            filter: item => !item.text.includes('拟合')
+          }
+        },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'RT (秒)', color: textColor },
+          ticks: { color: textColor, maxTicksLimit: 12 }, grid: { color: gridColor }
+        },
+        y: {
+          stacked: false,
+          title: { display: true, text: '试次频数', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor }
+        }
+      }
+    }
+  });
+}
+
+function renderOmissionData() {
+  if (!appState.currentData) return;
+  const formal = appState.currentData.trials.filter(t => t.stage === 'formal');
+  if (formal.length === 0) return;
+
+  const canvas = document.getElementById('omissionChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (omissionChart) omissionChart.destroy();
+
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  const categories = [
+    { key: 'Matching×Self', filter: t => t.Condition === 'Matching' && t.Identity === 'Self', color: '#4caf50' },
+    { key: 'Matching×Stranger', filter: t => t.Condition === 'Matching' && t.Identity === 'Stranger', color: '#81c784' },
+    { key: 'NonMatching×Self', filter: t => t.Condition === 'NonMatching' && t.Identity === 'Self', color: '#f44336' },
+    { key: 'NonMatching×Stranger', filter: t => t.Condition === 'NonMatching' && t.Identity === 'Stranger', color: '#e57373' },
+  ];
+
+  const items = categories.map(c => {
+    const subset = formal.filter(c.filter);
+    const total = subset.length;
+    const responded = subset.filter(t => t.RT !== null).length;
+    const omitted = total - responded;
+    const omissionRate = total > 0 ? (omitted / total * 100) : 0;
+    return { key: c.key, total, responded, omitted, omissionRate, color: c.color };
+  });
+
+  omissionChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: items.map(i => i.key),
+      datasets: [
+        {
+          label: '遗漏率 (%)',
+          data: items.map(i => i.omissionRate),
+          backgroundColor: items.map(i => withAlpha(i.color, 0.7)),
+          borderColor: items.map(i => i.color),
+          borderWidth: 2,
+          order: 1,
+        },
+        {
+          label: '遗漏试次',
+          data: items.map(i => i.omitted),
+          type: 'line',
+          borderColor: '#ff9800',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 5,
+          pointBackgroundColor: '#ff9800',
+          tension: 0.3,
+          yAxisID: 'y1',
+          order: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: legendColor, usePointStyle: true, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const i = items[ctx.dataIndex];
+              if (ctx.dataset.yAxisID === 'y1') return `遗漏试次: ${i.omitted} / ${i.total}`;
+              return `遗漏率: ${i.omissionRate.toFixed(1)}% (${i.omitted}/${i.total})`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor, display: false } },
+        y: {
+          type: 'linear', position: 'left',
+          title: { display: true, text: '遗漏率 (%)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor },
+          min: 0,
+        },
+        y1: {
+          type: 'linear', position: 'right',
+          title: { display: true, text: '遗漏试次数', color: '#ff9800' },
+          ticks: { color: '#ff9800' }, grid: { display: false },
+          min: 0,
+        }
+      }
+    }
+  });
+}
+
+function renderDataCRF() {
+  if (!appState.currentData) return;
+  const formal = appState.currentData.trials.filter(t => t.RT !== null && t.stage === 'formal');
+  if (formal.length === 0) return;
+
+  const canvas = document.getElementById('dataCRFChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (dataCRFChart) dataCRFChart.destroy();
+
+  const quantileN = parseInt(document.getElementById('dataCRFQuantile')?.value || 5);
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  const categories = [
+    { key: 'Matching×Self', filter: t => t.Condition === 'Matching' && t.Identity === 'Self', color: '#4caf50', dash: [], symbol: 'circle' },
+    { key: 'Matching×Stranger', filter: t => t.Condition === 'Matching' && t.Identity === 'Stranger', color: '#81c784', dash: [], symbol: 'triangle' },
+    { key: 'NonMatching×Self', filter: t => t.Condition === 'NonMatching' && t.Identity === 'Self', color: '#f44336', dash: [6, 3], symbol: 'circle' },
+    { key: 'NonMatching×Stranger', filter: t => t.Condition === 'NonMatching' && t.Identity === 'Stranger', color: '#e57373', dash: [6, 3], symbol: 'triangle' },
+  ];
+
+  const datasets = categories.map(c => {
+    const subset = formal.filter(c.filter);
+    const rts = subset.map(t => t.RT);
+    if (rts.length < quantileN) return { label: c.key, data: [], borderColor: c.color, pointRadius: 0 };
+
+    const sorted = [...rts].sort((a, b) => a - b);
+    const points = [];
+    for (let q = 0; q < quantileN; q++) {
+      const lo = Math.floor(q * sorted.length / quantileN);
+      const hi = Math.floor((q + 1) * sorted.length / quantileN) - 1;
+      const binRts = sorted.slice(lo, hi + 1);
+      if (binRts.length === 0) continue;
+      const meanRT = binRts.reduce((s, v) => s + v, 0) / binRts.length;
+      const binTrials = subset.filter(t => t.RT >= binRts[0] && t.RT <= binRts[binRts.length - 1]);
+      const correct = binTrials.filter(t => t.Correct === 1).length;
+      const acc = binTrials.length > 0 ? (correct / binTrials.length * 100) : 0;
+      points.push({ x: meanRT, y: acc });
+    }
+    return {
+      label: c.key,
+      data: points,
+      borderColor: c.color,
+      backgroundColor: c.color,
+      borderWidth: 2.5,
+      pointRadius: points.length > 0 ? 5 : 0,
+      pointHoverRadius: 8,
+      pointStyle: c.symbol === 'triangle' ? 'triangle' : 'circle',
+      tension: 0.3,
+      fill: false,
+      borderDash: c.dash,
+      order: 0,
+    };
+  });
+
+  dataCRFChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: legendColor, usePointStyle: true, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              return `${ctx.dataset.label}: RT=${ctx.raw.x.toFixed(3)}s, ACC=${ctx.raw.y.toFixed(1)}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'RT (秒)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor }
+        },
+        y: {
+          title: { display: true, text: '正确率 (%)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor },
+          min: 0, max: 100,
+        }
+      }
+    }
+  });
+}
+
+function renderDataSPE() {
+  if (!appState.currentData) return;
+  const formal = appState.currentData.trials.filter(t => t.RT !== null && t.stage === 'formal');
+  if (formal.length === 0) return;
+
+  const canvas = document.getElementById('dataSPEChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (dataSPEChart) dataSPEChart.destroy();
+
+  const quantileN = parseInt(document.getElementById('dataCRFQuantile')?.value || 5);
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+
+  const pairs = [
+    { key: 'Matching SPE', cond: 'Matching', color: '#4caf50', dash: [] },
+    { key: 'NonMatching SPE', cond: 'NonMatching', color: '#f44336', dash: [6, 3] },
+  ];
+
+  const datasets = pairs.map(p => {
+    const selfSubset = formal.filter(t => t.Condition === p.cond && t.Identity === 'Self');
+    const strangerSubset = formal.filter(t => t.Condition === p.cond && t.Identity === 'Stranger');
+    const allRts = formal.map(t => t.RT);
+    const sorted = [...allRts].sort((a, b) => a - b);
+    const points = [];
+
+    for (let q = 0; q < quantileN; q++) {
+      const lo = Math.floor(q * sorted.length / quantileN);
+      const hi = Math.floor((q + 1) * sorted.length / quantileN) - 1;
+      const binRts = sorted.slice(lo, hi + 1);
+      if (binRts.length === 0) continue;
+      const meanRT = binRts.reduce((s, v) => s + v, 0) / binRts.length;
+
+      const selfBin = selfSubset.filter(t => t.RT >= binRts[0] && t.RT <= binRts[binRts.length - 1]);
+      const strangerBin = strangerSubset.filter(t => t.RT >= binRts[0] && t.RT <= binRts[binRts.length - 1]);
+
+      const selfAcc = selfBin.length > 0 ? selfBin.filter(t => t.Correct === 1).length / selfBin.length * 100 : 0;
+      const strangerAcc = strangerBin.length > 0 ? strangerBin.filter(t => t.Correct === 1).length / strangerBin.length * 100 : 0;
+      const spe = selfAcc - strangerAcc;
+
+      points.push({ x: meanRT, y: spe });
+    }
+    return {
+      label: p.key,
+      data: points,
+      borderColor: p.color,
+      backgroundColor: p.color,
+      borderWidth: 2.5,
+      pointRadius: points.length > 0 ? 5 : 0,
+      pointHoverRadius: 8,
+      tension: 0.3,
+      fill: false,
+      borderDash: p.dash,
+      order: 0,
+    };
+  });
+
+  dataSPEChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: legendColor, usePointStyle: true, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const val = ctx.raw.y;
+              const dir = val > 0 ? 'Self偏向' : val < 0 ? 'Stranger偏向' : '无差异';
+              return `${ctx.dataset.label}: ${val.toFixed(1)}% (${dir}) | RT≈${ctx.raw.x.toFixed(3)}s`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'RT (秒)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor }
+        },
+        y: {
+          title: { display: true, text: 'SPE = Self ACC − Stranger ACC (%)', color: textColor },
+          ticks: { color: textColor }, grid: { color: gridColor }
+        }
+      }
+    },
+    plugins: [{
+      id: 'speZeroBaseline',
+      afterDraw(chart) {
+        const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+        const y0 = y.getPixelForValue(0);
+        if (y0 < chart.chartArea.top || y0 > chart.chartArea.bottom) return;
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(left, y0); ctx.lineTo(right, y0); ctx.stroke();
+        ctx.restore();
+      }
+    }]
   });
 }
 
@@ -1670,6 +2229,37 @@ async function renderVisualizationTab(lp, rp) {
       <span id="quantileVal" style="color:var(--accent);">5</span>
     </div>
 
+    <div class="section-title">坐标轴与指标设置</div>
+    <div style="font-size:0.78em;color:var(--text-secondary);line-height:1.8;background:var(--bg-card);padding:8px 10px;border-radius:6px;border:1px solid var(--border);">
+      <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">Y轴指标</div>
+      <select id="crfYMetricSelect" style="width:100%;font-size:0.9em;padding:4px 8px;">
+        <option value="matchProp" selected>P(Match Key) — 匹配键比例</option>
+        <option value="acc">ACC — 准确率 (正确反应比例)</option>
+      </select>
+      <div id="crfACCModeGroup" style="margin-top:6px;display:none;">
+        <div style="font-weight:600;color:var(--accent);margin-bottom:3px;">ACC 计算模式</div>
+        <div style="display:flex;gap:6px;">
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;padding:3px 8px;border-radius:4px;border:1px solid var(--border);font-size:0.9em;">
+            <input type="radio" name="crfACCMode" value="overall" style="display:none;">
+            <span class="crf-acc-radio-dot"></span> 整体ACC
+          </label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;padding:3px 8px;border-radius:4px;border:1px solid var(--border);font-size:0.9em;background:rgba(100,181,246,0.1);">
+            <input type="radio" name="crfACCMode" value="bin" checked style="display:none;">
+            <span class="crf-acc-radio-dot" style="background:var(--accent);"></span> 区间ACC
+          </label>
+        </div>
+        <div style="margin-top:4px;font-size:0.85em;color:var(--text-secondary);line-height:1.5;">
+          <div><b>整体ACC</b>: 正确试次 ÷ 全部试次 (全局常数,水平参考线)</div>
+          <div><b>区间ACC</b>: 分箱内正确试次 ÷ 分箱内全部试次 (随RT变化)</div>
+        </div>
+      </div>
+      <div style="font-weight:600;color:var(--accent);margin-top:8px;margin-bottom:3px;">X轴显示模式</div>
+      <select id="crfXAxisModeSelect" style="width:100%;font-size:0.9em;padding:4px 8px;">
+        <option value="rtMean" selected>RT均值 (秒) — 各分箱平均反应时</option>
+        <option value="binIndex">分箱序号 (1, 2, 3...) — 等距排列</option>
+      </select>
+    </div>
+
     <div class="section-title">CRF方法说明</div>
     <div style="font-size:0.75em;color:var(--text-secondary);line-height:1.7;background:var(--bg-card);padding:10px;border-radius:6px;border:1px solid var(--border);">
       <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">▎累积反应函数 (CRF) 可视化</div>
@@ -1698,7 +2288,33 @@ async function renderVisualizationTab(lp, rp) {
     </div>
   `;
   rp.innerHTML = `
-    <div class="chart-container" style="flex:2;">
+    <div class="chart-container" style="flex:2.2;">
+      <div class="section-title">
+        CRF 整体预览 — 全部组别与条件
+        <span id="crfOverviewTitle" style="font-size:0.7em;color:var(--text-secondary);margin-left:8px;"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;font-size:0.72em;">
+        <span style="color:var(--text-secondary);">聚合层级:</span>
+        <button class="crf-mode-btn active" id="crfOvLevelGroup">按组聚合 (8组)</button>
+        <button class="crf-mode-btn" id="crfOvLevelSubject">按被试 (88人)</button>
+        <span style="margin-left:auto;color:var(--text-secondary);">Q=</span>
+        <select id="crfOvQuantile" style="font-size:0.8em;padding:2px 6px;">
+          <option value="4">4</option><option value="5" selected>5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option></select>
+        <button id="btnLoadCrfOverview" style="font-size:0.75em;padding:3px 10px;">加载全部数据</button>
+      </div>
+      <canvas id="crfOverviewCanvas" style="width:100%;cursor:grab;min-height:280px;max-height:380px;display:block;"></canvas>
+      <div id="crfOverviewLegend" style="margin-top:6px;font-size:0.7em;line-height:1.6;border:1px solid var(--border);border-radius:4px;padding:6px 10px;background:var(--bg-card);display:flex;align-items:center;gap:8px;flex-wrap:wrap;"></div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:0.72em;flex-wrap:wrap;">
+        <button id="crfOvZoomOut" title="缩小 (Ctrl+-)" style="padding:2px 8px;font-size:0.85em;border-radius:3px;">−</button>
+        <span id="crfOvZoomDisplay" style="color:var(--accent);font-weight:600;min-width:42px;text-align:center;">100%</span>
+        <button id="crfOvZoomIn" title="放大 (Ctrl+=)" style="padding:2px 8px;font-size:0.85em;border-radius:3px;">+</button>
+        <input type="range" id="crfOvZoomSlider" min="50" max="200" value="100" step="5" style="width:80px;height:4px;padding:0;accent-color:var(--accent);">
+        <button id="crfOvReset" title="重置视图 (Ctrl+0)" style="padding:2px 8px;font-size:0.75em;border-radius:3px;margin-left:4px;">重置</button>
+        <span style="color:var(--text-secondary);margin-left:auto;font-size:0.85em;">🖱 滚轮缩放 | 拖动平移</span>
+      </div>
+      <div class="tooltip-info" id="crfOverviewInfo" style="margin-top:3px;font-size:0.68em;"></div>
+    </div>
+    <div class="chart-container" style="flex:1.5;">
       <div class="section-title">CRF: Self vs Stranger <span id="crfChartTitle" style="font-size:0.8em;color:var(--text-secondary);"></span>
         <span id="crfLoading" style="display:none;font-size:0.7em;color:#ff9800;margin-left:8px;">⏳ 计算中...</span>
       </div>
@@ -1708,7 +2324,7 @@ async function renderVisualizationTab(lp, rp) {
       <div class="section-title">SPE差异 (Self - Stranger)</div>
       <canvas id="speChart" style="max-height:250px;"></canvas>
     </div>
-    <div class="chart-container" style="flex:3;overflow-y:auto;min-height:0;">
+    <div class="chart-container" style="flex:2;overflow-y:auto;min-height:0;">
       <div class="section-title">源码与处理流程 — 从 raw CSV 到 CRF 可视化</div>
       <div style="padding:8px 0;">
         <div class="pipeline-flow">
@@ -1742,6 +2358,10 @@ async function renderVisualizationTab(lp, rp) {
   initCRFFilterChips();
   // 初始化分位数滑块（带防抖）
   initCRFSlider();
+  // 初始化Y轴指标选择
+  initCRFYAxisControls();
+  // 初始化X轴模式选择
+  initCRFXAxisControls();
   // 初始化组别选择
   initCRFGroupTabs();
   // 初始化文件搜索
@@ -1750,6 +2370,7 @@ async function renderVisualizationTab(lp, rp) {
   renderCRFFileList();
   // 源码展示
   renderCRFSourceCode();
+  initCRFOverview();
 }
 
 // === 模式切换 ===
@@ -1824,6 +2445,60 @@ function initCRFSlider() {
     document.getElementById('quantileVal').textContent = slider.value;
     debounceCRF(() => updateCRFChart(), 150);
   });
+}
+
+// === Y轴指标选择 (P(Match) / ACC) ===
+function initCRFYAxisControls() {
+  const ySelect = document.getElementById('crfYMetricSelect');
+  const accGroup = document.getElementById('crfACCModeGroup');
+  if (!ySelect) return;
+  ySelect.addEventListener('change', () => {
+    _crfYMetric = ySelect.value;
+    if (ySelect.value === 'acc') {
+      accGroup.style.display = '';
+      document.querySelectorAll('input[name="crfACCMode"]').forEach(r => {
+        r.addEventListener('change', () => { _crfACCMode = r.value; updateAllCRFViews(); });
+      });
+    } else {
+      accGroup.style.display = 'none';
+    }
+    updateAllCRFViews();
+  });
+  // Init ACC radio listeners
+  if (accGroup) {
+    document.querySelectorAll('input[name="crfACCMode"]').forEach(r => {
+      r.addEventListener('change', () => {
+        _crfACCMode = r.value;
+        document.querySelectorAll('input[name="crfACCMode"]').forEach(r2 => {
+          const label = r2.parentElement;
+          const dot = label.querySelector('.crf-acc-radio-dot');
+          if (r2.checked) {
+            label.style.background = 'rgba(100,181,246,0.1)';
+            if (dot) dot.style.background = 'var(--accent)';
+          } else {
+            label.style.background = 'transparent';
+            if (dot) dot.style.background = 'transparent';
+          }
+        });
+        updateAllCRFViews();
+      });
+    });
+  }
+}
+
+// === X轴模式选择 (RT均值 / 分箱序号) ===
+function initCRFXAxisControls() {
+  const xSelect = document.getElementById('crfXAxisModeSelect');
+  if (!xSelect) return;
+  xSelect.addEventListener('change', () => {
+    _crfXAxisMode = xSelect.value;
+    updateAllCRFViews();
+  });
+}
+
+function updateAllCRFViews() {
+  updateCRFChart();
+  if (_crfOvData) renderCRFOverview();
 }
 
 // === 组别标签 ===
@@ -1982,25 +2657,30 @@ function computeCRF(trials, nQuantiles) {
   const qSize = Math.floor(n / nQuantiles);
   const bins = [];
   let start = 0;
+  let globalNCorrect = 0;
   for (let i = 0; i < nQuantiles; i++) {
     const end = i === nQuantiles - 1 ? n : start + qSize;
-    let rtSum = 0, rtSumSq = 0, nMatchResp = 0;
+    let rtSum = 0, rtSumSq = 0, nMatchResp = 0, nCorrect = 0;
     for (let j = start; j < end; j++) {
       rtSum += sorted[j].RT;
       rtSumSq += sorted[j].RT * sorted[j].RT;
       if (sorted[j].ResponseIsMatch) nMatchResp++;
+      if (sorted[j].Correct === 1) nCorrect++;
     }
     const count = end - start;
+    globalNCorrect += nCorrect;
     const rtMean = rtSum / count;
     const rtVar = (rtSumSq / count) - (rtMean * rtMean);
     const rtSD = Math.sqrt(Math.max(0, rtVar));
     const upperProp = nMatchResp / count;
-    // 二项比例的标准误差: sqrt(p*(1-p)/n)
     const sem = Math.sqrt(upperProp * (1 - upperProp) / count);
-    bins.push({ rtMean, rtSD, upperProp, sem, n: count });
+    const binACC = nCorrect / count;
+    const binACCSem = Math.sqrt(binACC * (1 - binACC) / count);
+    bins.push({ rtMean, rtSD, upperProp, sem, binACC, binACCSem, nCorrect, n: count });
     start = end;
   }
-  return bins;
+  const overallACC = n > 0 ? globalNCorrect / n : 0;
+  return { bins, overallACC, nTotal: n, nCorrect: globalNCorrect };
 }
 
 // === 图表实例 ===
@@ -2034,10 +2714,22 @@ function updateCRFChart() {
     
     _crfCache = { selfTrials: selfTrials.length, strangerTrials: strangerTrials.length, nQ };
 
-    const crfSelf = computeCRF(selfTrials, nQ);
-    const crfStranger = computeCRF(strangerTrials, nQ);
+    const crfSelfResult = computeCRF(selfTrials, nQ);
+    const crfStrangerResult = computeCRF(strangerTrials, nQ);
+    const crfSelf = crfSelfResult ? crfSelfResult.bins : null;
+    const crfStranger = crfStrangerResult ? crfStrangerResult.bins : null;
+    _crfCache.overallACCSelf = crfSelfResult ? crfSelfResult.overallACC : 0;
+    _crfCache.overallACCStranger = crfStrangerResult ? crfStrangerResult.overallACC : 0;
+    _crfCache.nTotalSelf = crfSelfResult ? crfSelfResult.nTotal : 0;
+    _crfCache.nTotalStranger = crfStrangerResult ? crfStrangerResult.nTotal : 0;
 
     const titleEl = document.getElementById('crfChartTitle');
+    const isACC = _crfYMetric === 'acc';
+    const useOverallACC = isACC && _crfACCMode === 'overall';
+    const useBinACC = isACC && _crfACCMode === 'bin';
+    const useBinIndex = _crfXAxisMode === 'binIndex';
+    const yLabel = isACC ? (useOverallACC ? 'ACC (整体准确率)' : 'ACC (区间准确率)') : '匹配键选择比例 (P_Match_Response)';
+    const xLabel = useBinIndex ? '分箱序号 (Bin Index)' : 'RT (秒)';
     titleEl.textContent = `(n=${trials.length}, Self=${selfTrials.length}, Stranger=${strangerTrials.length}, Q=${nQ})`;
 
     const ctx = document.getElementById('crfChart').getContext('2d');
@@ -2046,14 +2738,26 @@ function updateCRFChart() {
     const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
     const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
 
-    // 构建数据集: 原始CRF点 + 趋势拟合线
+    const getYVal = (b, overallACC) => {
+      if (useBinACC) return b.binACC;
+      if (useOverallACC) return overallACC;
+      return b.upperProp;
+    };
+    const getYSEM = (b) => {
+      if (useBinACC) return b.binACCSem;
+      if (useOverallACC) return 0;
+      return b.sem;
+    };
+    const getXVal = (b, idx) => useBinIndex ? (idx + 1) : b.rtMean;
+
+    const overallACCSelf = crfSelfResult ? crfSelfResult.overallACC : 0;
+    const overallACCStranger = crfStrangerResult ? crfStrangerResult.overallACC : 0;
+
     const datasets = [];
 
-    // ===== Self 条件 =====
     if (crfSelf) {
-      // 趋势拟合线 (先绘制, 在下方)
-      const selfXs = crfSelf.map(b => b.rtMean);
-      const selfYs = crfSelf.map(b => b.upperProp);
+      const selfXs = crfSelf.map((b, i) => getXVal(b, i));
+      const selfYs = crfSelf.map(b => getYVal(b, overallACCSelf));
       const selfFit = polyFit(selfXs, selfYs, 2);
       if (selfFit) {
         const fitPoints = [];
@@ -2072,21 +2776,18 @@ function updateCRFChart() {
           order: 3,
         });
       }
-
-      // 原始CRF点 + 线
       datasets.push({
         label: 'Self',
-        data: crfSelf.map(b => ({ x: b.rtMean, y: b.upperProp })),
+        data: crfSelf.map((b, i) => ({ x: getXVal(b, i), y: getYVal(b, overallACCSelf) })),
         borderColor: '#ff9800', backgroundColor: '#ff9800',
         pointRadius: 6, pointHoverRadius: 8, borderWidth: 2.5, tension: 0.1,
         order: 1,
       });
     }
 
-    // ===== Stranger 条件 =====
     if (crfStranger) {
-      const stXs = crfStranger.map(b => b.rtMean);
-      const stYs = crfStranger.map(b => b.upperProp);
+      const stXs = crfStranger.map((b, i) => getXVal(b, i));
+      const stYs = crfStranger.map(b => getYVal(b, overallACCStranger));
       const stFit = polyFit(stXs, stYs, 2);
       if (stFit) {
         const fitPoints = [];
@@ -2105,13 +2806,36 @@ function updateCRFChart() {
           order: 3,
         });
       }
-
       datasets.push({
         label: 'Stranger',
-        data: crfStranger.map(b => ({ x: b.rtMean, y: b.upperProp })),
+        data: crfStranger.map((b, i) => ({ x: getXVal(b, i), y: getYVal(b, overallACCStranger) })),
         borderColor: '#2196f3', backgroundColor: '#2196f3',
         pointRadius: 6, pointHoverRadius: 8, borderWidth: 2.5, tension: 0.1,
         order: 1,
+      });
+    }
+
+    // ACC整体模式: 添加水平参考线 (Overall ACC reference line)
+    if (useOverallACC && crfSelf) {
+      const xMin = crfSelf.map((b,i)=>getXVal(b,i)).reduce((a,v)=>Math.min(a,v), Infinity);
+      const xMax = crfSelf.map((b,i)=>getXVal(b,i)).reduce((a,v)=>Math.max(a,v), -Infinity);
+      datasets.push({
+        label: 'Self overall ACC ref',
+        data: [{x:xMin, y:overallACCSelf}, {x:xMax, y:overallACCSelf}],
+        borderColor: withAlpha('#ff9800', 0.4), backgroundColor: 'transparent',
+        pointRadius: 0, borderWidth: 1, borderDash: [2, 6], showLine: true,
+        order: 4,
+      });
+    }
+    if (useOverallACC && crfStranger) {
+      const xMin = crfStranger.map((b,i)=>getXVal(b,i)).reduce((a,v)=>Math.min(a,v), Infinity);
+      const xMax = crfStranger.map((b,i)=>getXVal(b,i)).reduce((a,v)=>Math.max(a,v), -Infinity);
+      datasets.push({
+        label: 'Stranger overall ACC ref',
+        data: [{x:xMin, y:overallACCStranger}, {x:xMax, y:overallACCStranger}],
+        borderColor: withAlpha('#2196f3', 0.4), backgroundColor: 'transparent',
+        pointRadius: 0, borderWidth: 1, borderDash: [2, 6], showLine: true,
+        order: 4,
       });
     }
 
@@ -2121,56 +2845,41 @@ function updateCRFChart() {
         const { ctx, chartArea, scales: { x, y } } = chart;
         const { left, top, right, bottom } = chartArea;
         ctx.save();
-
         ctx.beginPath();
         ctx.rect(left, top, right - left, bottom - top);
         ctx.clip();
 
-        const drawDensityBg = (bins, color) => {
-          if (!bins || bins.length < 2) return;
-          const totalWidth = right - left;
-          const n = bins.length;
-          const slotW = totalWidth / n;
-          ctx.fillStyle = color;
-          ctx.globalAlpha = 0.12;
-          bins.forEach((b, i) => {
-            const cx = left + slotW * (i + 0.5);
-            const w = slotW * 0.85;
-            ctx.fillRect(cx - w/2, top, w, bottom - top);
-          });
-        };
-        if (crfSelf) drawDensityBg(crfSelf, '#ff9800');
-        if (crfStranger) drawDensityBg(crfStranger, '#2196f3');
-
-        const drawCIBand = (bins, color) => {
-          if (!bins || bins.length < 2) return;
+        const clampY = (val) => Math.max(top, Math.min(bottom, val));
+        const drawCIBand = (bins, color, overallACC) => {
+          if (!bins || bins.length < 2 || useOverallACC) return;
           ctx.beginPath();
           ctx.fillStyle = color;
           ctx.globalAlpha = 0.3;
-          const clampY = (val) => Math.max(top, Math.min(bottom, val));
-          const firstX = x.getPixelForValue(bins[0].rtMean);
-          ctx.moveTo(firstX, clampY(y.getPixelForValue(bins[0].upperProp + bins[0].sem * 1.96)));
+          const firstX = x.getPixelForValue(getXVal(bins[0], 0));
+          ctx.moveTo(firstX, clampY(y.getPixelForValue(getYVal(bins[0], overallACC) + getYSEM(bins[0]) * 1.96)));
           for (let i = 1; i < bins.length; i++) {
-            ctx.lineTo(x.getPixelForValue(bins[i].rtMean), clampY(y.getPixelForValue(bins[i].upperProp + bins[i].sem * 1.96)));
+            ctx.lineTo(x.getPixelForValue(getXVal(bins[i], i)), clampY(y.getPixelForValue(getYVal(bins[i], overallACC) + getYSEM(bins[i]) * 1.96)));
           }
           for (let i = bins.length - 1; i >= 0; i--) {
-            ctx.lineTo(x.getPixelForValue(bins[i].rtMean), clampY(y.getPixelForValue(bins[i].upperProp - bins[i].sem * 1.96)));
+            ctx.lineTo(x.getPixelForValue(getXVal(bins[i], i)), clampY(y.getPixelForValue(getYVal(bins[i], overallACC) - getYSEM(bins[i]) * 1.96)));
           }
           ctx.closePath();
           ctx.fill();
         };
-        if (crfSelf) drawCIBand(crfSelf, withAlpha('#ff9800', 0.12));
-        if (crfStranger) drawCIBand(crfStranger, withAlpha('#2196f3', 0.12));
+        if (crfSelf) drawCIBand(crfSelf, withAlpha('#ff9800', 0.12), overallACCSelf);
+        if (crfStranger) drawCIBand(crfStranger, withAlpha('#2196f3', 0.12), overallACCStranger);
 
         ctx.globalAlpha = 0.55;
         ctx.lineWidth = 1.5;
-        const clampY = (val) => Math.max(top, Math.min(bottom, val));
-        const drawErrorBars = (bins, color) => {
-          bins.forEach(b => {
-            const px = x.getPixelForValue(b.rtMean);
+        const drawErrorBars = (bins, color, overallACC) => {
+          if (useOverallACC) return;
+          bins.forEach((b, i) => {
+            const px = x.getPixelForValue(getXVal(b, i));
             if (px < left || px > right) return;
-            const yUpper = clampY(y.getPixelForValue(b.upperProp + b.sem * 1.96));
-            const yLower = clampY(y.getPixelForValue(b.upperProp - b.sem * 1.96));
+            const yVal = getYVal(b, overallACC);
+            const sem = getYSEM(b);
+            const yUpper = clampY(y.getPixelForValue(yVal + sem * 1.96));
+            const yLower = clampY(y.getPixelForValue(yVal - sem * 1.96));
             ctx.strokeStyle = color;
             ctx.beginPath();
             ctx.moveTo(px, yUpper);
@@ -2184,81 +2893,79 @@ function updateCRFChart() {
             ctx.stroke();
           });
         };
-        if (crfSelf) drawErrorBars(crfSelf, '#ff9800');
-        if (crfStranger) drawErrorBars(crfStranger, '#2196f3');
+        if (crfSelf) drawErrorBars(crfSelf, '#ff9800', overallACCSelf);
+        if (crfStranger) drawErrorBars(crfStranger, '#2196f3', overallACCStranger);
 
         ctx.restore();
       }
     };
 
-    // 0.5基线插件
+    const yMax = isACC ? 1.0 : 1.0;
+    const yMin = isACC ? 0 : 0;
+    const yStep = isACC ? 0.1 : 0.1;
+
     const baselinePlugin = {
       id: 'baseline05',
       afterDraw(chart) {
         const { ctx, chartArea: { left, right }, scales: { y } } = chart;
-        const y05 = y.getPixelForValue(0.5);
-        if (y05 >= chart.chartArea.top && y05 <= chart.chartArea.bottom) {
+        const refVal = isACC ? 0.5 : 0.5;
+        const yRef = y.getPixelForValue(refVal);
+        if (yRef >= chart.chartArea.top && yRef <= chart.chartArea.bottom) {
           ctx.save();
           ctx.setLineDash([6, 4]);
           ctx.strokeStyle = textColor;
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(left, y05);
-          ctx.lineTo(right, y05);
+          ctx.moveTo(left, yRef);
+          ctx.lineTo(right, yRef);
           ctx.stroke();
-          // ggcube 风格: 添加小的 "0.5" 标注
           ctx.fillStyle = textColor;
           ctx.font = '10px sans-serif';
-          ctx.fillText('chance', left + 4, y05 - 5);
+          ctx.fillText(isACC ? 'chance (0.5)' : 'chance', left + 4, yRef - 5);
           ctx.restore();
         }
       }
     };
 
-    if (crfChartInst) {
-      crfChartInst.data.datasets = datasets;
-      crfChartInst.options.scales.x.title.color = textColor;
-      crfChartInst.options.scales.x.ticks.color = textColor;
-      crfChartInst.options.scales.x.grid.color = gridColor;
-      crfChartInst.options.scales.y.title.color = textColor;
-      crfChartInst.options.scales.y.ticks.color = textColor;
-      crfChartInst.options.scales.y.grid.color = gridColor;
-      crfChartInst.options.plugins.legend.labels.color = legendColor;
-      crfChartInst.update('active');
-    } else {
-      crfChartInst = new Chart(ctx, {
+    if (crfChartInst) { crfChartInst.destroy(); crfChartInst = null; }
+    crfChartInst = new Chart(ctx, {
         type: 'scatter',
         data: { datasets },
         options: {
           responsive: true, maintainAspectRatio: false, showLine: true,
           animation: { duration: 300, easing: 'easeOutQuart' },
           plugins: {
-            legend: { labels: { color: legendColor, usePointStyle: true, filter: item => !item.text.includes('trend') } },
+            legend: { labels: { color: legendColor, usePointStyle: true, filter: item => !item.text.includes('trend') && !item.text.includes('ref') } },
             tooltip: {
               callbacks: {
                 label: ctx => {
                   const d = ctx.dataset;
-                  if (d.label.includes('trend')) return '';
-                  return `${d.label}: RT=${ctx.parsed.x.toFixed(2)}s, P(Match)=${(ctx.parsed.y*100).toFixed(1)}%`;
+                  if (d.label.includes('trend') || d.label.includes('ref')) return '';
+                  if (useBinIndex) {
+                    return `${d.label}: Bin=${ctx.parsed.x.toFixed(0)}, ${isACC ? 'ACC' : 'P(Match)'}=${(ctx.parsed.y*100).toFixed(1)}%`;
+                  }
+                  return `${d.label}: RT=${ctx.parsed.x.toFixed(2)}s, ${isACC ? 'ACC' : 'P(Match)'}=${(ctx.parsed.y*100).toFixed(1)}%`;
                 }
               }
             }
           },
           scales: {
             x: {
-              type: 'linear', title: { display: true, text: 'RT (秒)', color: textColor },
-              ticks: { color: textColor }, grid: { color: gridColor }
+              type: 'linear', title: { display: true, text: xLabel, color: textColor },
+              ticks: { color: textColor, stepSize: useBinIndex ? 1 : undefined },
+              grid: { color: gridColor },
+              min: useBinIndex ? 0.5 : undefined,
+              max: useBinIndex ? nQ + 0.5 : undefined,
             },
             y: {
-              title: { display: true, text: '匹配键选择比例 (P_Match_Response)', color: textColor },
-              min: 0, max: 1, ticks: { color: textColor, stepSize: 0.1 },
+              title: { display: true, text: yLabel, color: textColor },
+              min: yMin, max: yMax, ticks: { color: textColor, stepSize: yStep },
               grid: { color: gridColor }
             }
           }
         },
         plugins: [baselinePlugin, ciBandPlugin],
       });
-    }
 
     updateSPEChart(crfSelf, crfStranger);
     if (loadingEl) loadingEl.style.display = 'none';
@@ -2282,25 +2989,42 @@ function updateSPEChart(crfSelf, crfStranger) {
     return;
   }
 
+  const isACC = _crfYMetric === 'acc';
+  const useOverallACC = isACC && _crfACCMode === 'overall';
+  const useBinIndex = _crfXAxisMode === 'binIndex';
+  const overallACCSelf = _crfCache.overallACCSelf || 0;
+  const overallACCStranger = _crfCache.overallACCStranger || 0;
+
   const speData = [];
   const speSems = [];
   const minLen = Math.min(crfSelf.length, crfStranger.length);
   for (let i = 0; i < minLen; i++) {
-    const rtX = (crfSelf[i].rtMean + crfStranger[i].rtMean) / 2;
-    const spe = crfSelf[i].upperProp - crfStranger[i].upperProp;
-    // SEM for difference: sqrt(sem_self^2 + sem_stranger^2)
-    const sem = Math.sqrt(crfSelf[i].sem * crfSelf[i].sem + crfStranger[i].sem * crfStranger[i].sem);
-    speData.push({ x: rtX, y: spe });
+    const rtX = useBinIndex ? (i + 1) : (crfSelf[i].rtMean + crfStranger[i].rtMean) / 2;
+    let speY;
+    let sem;
+    if (useOverallACC) {
+      speY = overallACCSelf - overallACCStranger;
+      sem = 0;
+    } else if (isACC) {
+      speY = crfSelf[i].binACC - crfStranger[i].binACC;
+      sem = Math.sqrt(crfSelf[i].binACCSem * crfSelf[i].binACCSem + crfStranger[i].binACCSem * crfStranger[i].binACCSem);
+    } else {
+      speY = crfSelf[i].upperProp - crfStranger[i].upperProp;
+      sem = Math.sqrt(crfSelf[i].sem * crfSelf[i].sem + crfStranger[i].sem * crfStranger[i].sem);
+    }
+    speData.push({ x: rtX, y: speY });
     speSems.push(sem);
   }
 
-  // 趋势拟合
+  const speLabel = isACC ? 'SPE = ACC_Self - ACC_Stranger' : 'SPE = P_Self - P_Stranger';
+  const xLabelSPE = useBinIndex ? '分箱序号 (Bin Index)' : 'RT均值 (秒)';
+
   const speXs = speData.map(d => d.x);
   const speYs = speData.map(d => d.y);
   const speFit = polyFit(speXs, speYs, 2);
   const datasets = [
     {
-      label: 'SPE = P_Self - P_Stranger',
+      label: speLabel,
       data: speData,
       borderColor: '#ce93d8', backgroundColor: '#ce93d8',
       pointRadius: 7, pointHoverRadius: 10, borderWidth: 2.5, tension: 0.1,
@@ -2325,7 +3049,6 @@ function updateSPEChart(crfSelf, crfStranger) {
     });
   }
 
-  // ggcube 风格: 零基线 + 置信区间带的自定义插件
   const speBaselinePlugin = {
     id: 'speBaseline',
     beforeDatasetsDraw(chart) {
@@ -2339,12 +3062,10 @@ function updateSPEChart(crfSelf, crfStranger) {
         ctx.beginPath();
         ctx.moveTo(left, y0);
         ctx.lineTo(right, y0);
-        ctx.stroke();
         ctx.restore();
       }
 
-      // 置信区间带
-      if (speSems.length >= 2) {
+      if (speSems.length >= 2 && !useOverallACC) {
         ctx.save();
         ctx.globalAlpha = 0.25;
         const { x: scaleX } = chart.scales;
@@ -2362,7 +3083,6 @@ function updateSPEChart(crfSelf, crfStranger) {
         ctx.fill();
         ctx.restore();
 
-        // 误差棒
         ctx.save();
         ctx.globalAlpha = 0.5;
         ctx.strokeStyle = '#ce93d8';
@@ -2385,18 +3105,8 @@ function updateSPEChart(crfSelf, crfStranger) {
     }
   };
 
-  if (speChartInst) {
-    speChartInst.data.datasets = datasets;
-    speChartInst.options.scales.x.title.color = textColor;
-    speChartInst.options.scales.x.ticks.color = textColor;
-    speChartInst.options.scales.x.grid.color = gridColor;
-    speChartInst.options.scales.y.title.color = textColor;
-    speChartInst.options.scales.y.ticks.color = textColor;
-    speChartInst.options.scales.y.grid.color = gridColor;
-    speChartInst.options.plugins.legend.labels.color = legendColor;
-    speChartInst.update('active');
-  } else {
-    speChartInst = new Chart(ctx, {
+  if (speChartInst) { speChartInst.destroy(); speChartInst = null; }
+  speChartInst = new Chart(ctx, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -2409,18 +3119,22 @@ function updateSPEChart(crfSelf, crfStranger) {
               label: ctx => {
                 const d = ctx.dataset;
                 if (d.label.includes('trend')) return '';
-                return `SPE: RT=${ctx.parsed.x.toFixed(2)}s, ΔP(Match)=${(ctx.parsed.y*100).toFixed(1)}%`;
+                const metricName = isACC ? 'ΔACC' : 'ΔP(Match)';
+                return `SPE: ${useBinIndex ? 'Bin='+ctx.parsed.x.toFixed(0) : 'RT='+ctx.parsed.x.toFixed(2)+'s'}, ${metricName}=${(ctx.parsed.y*100).toFixed(1)}%`;
               }
             }
           }
         },
         scales: {
           x: {
-            title: { display: true, text: 'RT均值 (秒)', color: textColor },
-            ticks: { color: textColor }, grid: { color: gridColor }
+            title: { display: true, text: xLabelSPE, color: textColor },
+            ticks: { color: textColor, stepSize: useBinIndex ? 1 : undefined },
+            grid: { color: gridColor },
+            min: useBinIndex ? 0.5 : undefined,
+            max: useBinIndex ? minLen + 0.5 : undefined,
           },
           y: {
-            title: { display: true, text: 'SPE: Δ 匹配键比例 (Self - Stranger)', color: textColor },
+            title: { display: true, text: speLabel, color: textColor },
             ticks: { color: textColor },
             grid: { color: gridColor }
           }
@@ -2428,7 +3142,6 @@ function updateSPEChart(crfSelf, crfStranger) {
       },
       plugins: [speBaselinePlugin],
     });
-  }
 }
 
 // === 聚合数据加载 (带状态指示) ===
@@ -2698,6 +3411,551 @@ function escapeHTML(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// ==================== CRF 整体预览引擎 ====================
+const CRF_OV_COLORS = ['#e91e63','#2196f3','#4caf50','#ff9800','#9c27b0','#00bcd4','#ffeb3b','#795548'];
+let _crfOvData = null;
+let _crfOvLevel = 'group';
+let _crfOvVisible = new Set([1,2,3,4,5,6,7,8]);
+let _crfOvQ = 5;
+let _crfOvView = { zoom: 1, offsetX: 0, offsetY: 0, targetZoom: 1, targetOffsetX: 0, targetOffsetY: 0 };
+let _crfOvAnimFrame = null;
+let _crfOvDragging = false;
+let _crfOvDragStart = { x: 0, y: 0, offsetX: 0, offsetY: 0 };
+let _crfYMetric = 'matchProp';
+let _crfACCMode = 'bin';
+let _crfXAxisMode = 'rtMean';
+let _crfOvShowSelf = true;
+let _crfOvShowStranger = true;
+
+function initCRFOverview() {
+  const btnGroup = document.getElementById('crfOvLevelGroup');
+  const btnSubj = document.getElementById('crfOvLevelSubject');
+  if (btnGroup) btnGroup.addEventListener('click', () => {
+    btnGroup.classList.add('active'); btnSubj.classList.remove('active');
+    _crfOvLevel = 'group'; renderCRFOverview();
+  });
+  if (btnSubj) btnSubj.addEventListener('click', () => {
+    btnSubj.classList.add('active'); btnGroup.classList.remove('active');
+    _crfOvLevel = 'subject'; renderCRFOverview();
+  });
+  const qSel = document.getElementById('crfOvQuantile');
+  if (qSel) qSel.addEventListener('change', () => {
+    _crfOvQ = parseInt(qSel.value);
+    _crfOvData = null; document.getElementById('crfOverviewInfo').textContent = '分位数已更改，请重新加载数据';
+  });
+  const btnLoad = document.getElementById('btnLoadCrfOverview');
+  if (btnLoad) btnLoad.addEventListener('click', () => loadCRFOverviewData());
+
+  const canvas = document.getElementById('crfOverviewCanvas');
+  if (canvas) {
+    const observer = new ResizeObserver(() => { if (_crfOvData) renderCRFOverview(); });
+    observer.observe(canvas.parentElement);
+    canvas.addEventListener('mousemove', e => {
+      updateCrfOvTooltip(e);
+      if (_crfOvDragging) {
+        const dx = e.offsetX - _crfOvDragStart.x;
+        const dy = e.offsetY - _crfOvDragStart.y;
+        _crfOvView.targetOffsetX = _crfOvDragStart.offsetX + dx;
+        _crfOvView.targetOffsetY = _crfOvDragStart.offsetY + dy;
+        canvas.style.cursor = 'grabbing';
+        scheduleCrfOvRender();
+      }
+    });
+    canvas.addEventListener('mousedown', e => {
+      if (e.button === 0) {
+        _crfOvDragging = true;
+        _crfOvDragStart = { x: e.offsetX, y: e.offsetY, offsetX: _crfOvView.targetOffsetX, offsetY: _crfOvView.targetOffsetY };
+        canvas.style.cursor = 'grabbing';
+      }
+    });
+    canvas.addEventListener('mouseup', () => { _crfOvDragging = false; canvas.style.cursor = _crfOvDragging ? 'grabbing' : 'grab'; });
+    canvas.addEventListener('mouseleave', () => { _crfOvDragging = false; canvas.style.cursor = 'grab'; });
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.08 : 0.08;
+      const newZoom = Math.max(0.5, Math.min(2.0, _crfOvView.targetZoom + delta));
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const scale = newZoom / _crfOvView.targetZoom;
+      _crfOvView.targetOffsetX = mx - scale * (mx - _crfOvView.targetOffsetX);
+      _crfOvView.targetOffsetY = my - scale * (my - _crfOvView.targetOffsetY);
+      _crfOvView.targetZoom = newZoom;
+      updateCrfOvZoomUI();
+      scheduleCrfOvRender();
+    }, { passive: false });
+
+    canvas.addEventListener('click', e => {
+       if (_crfOvDragging) return;
+       const legendEl = document.getElementById('crfOverviewLegend');
+       const cssH = canvas.clientHeight;
+       const barY = cssH - 22;
+       if (e.offsetY > barY - 4 && e.offsetY < barY + 18) {
+         const cssW = canvas.clientWidth;
+         const segW = Math.min(44, (cssW - 56 - 18) / 8);
+         const barX = (cssW - segW * 8) / 2;
+         const gid = Math.floor((e.offsetX - barX) / segW) + 1;
+         if (gid >= 1 && gid <= 8) {
+          if (_crfOvVisible.has(gid)) _crfOvVisible.delete(gid);
+          else _crfOvVisible.add(gid);
+          renderCRFOverview();
+        }
+      }
+    });
+  }
+
+  // Zoom controls
+  const zoomOutBtn = document.getElementById('crfOvZoomOut');
+  const zoomInBtn = document.getElementById('crfOvZoomIn');
+  const zoomSlider = document.getElementById('crfOvZoomSlider');
+  const resetBtn = document.getElementById('crfOvReset');
+  if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => adjustCrfOvZoom(-0.15));
+  if (zoomInBtn) zoomInBtn.addEventListener('click', () => adjustCrfOvZoom(0.15));
+  if (resetBtn) resetBtn.addEventListener('click', resetCrfOvView);
+  if (zoomSlider) zoomSlider.addEventListener('input', () => {
+    _crfOvView.targetZoom = parseInt(zoomSlider.value) / 100;
+    updateCrfOvZoomUI();
+    scheduleCrfOvRender();
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if (appState.currentTab !== 'tab-visualization') return;
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === '=' || e.key === '+') { e.preventDefault(); adjustCrfOvZoom(0.1); }
+      if (e.key === '-') { e.preventDefault(); adjustCrfOvZoom(-0.1); }
+      if (e.key === '0') { e.preventDefault(); resetCrfOvView(); }
+    }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); _crfOvView.targetOffsetX -= 20; scheduleCrfOvRender(); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); _crfOvView.targetOffsetX += 20; scheduleCrfOvRender(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); _crfOvView.targetOffsetY -= 20; scheduleCrfOvRender(); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); _crfOvView.targetOffsetY += 20; scheduleCrfOvRender(); }
+  });
+}
+
+function adjustCrfOvZoom(delta) {
+  const canvas = document.getElementById('crfOverviewCanvas');
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = rect.width / 2, cy = rect.height / 2;
+  const newZoom = Math.max(0.5, Math.min(2.0, _crfOvView.targetZoom + delta));
+  const scale = newZoom / _crfOvView.targetZoom;
+  _crfOvView.targetOffsetX = cx - scale * (cx - _crfOvView.targetOffsetX);
+  _crfOvView.targetOffsetY = cy - scale * (cy - _crfOvView.targetOffsetY);
+  _crfOvView.targetZoom = newZoom;
+  updateCrfOvZoomUI();
+  scheduleCrfOvRender();
+}
+
+function resetCrfOvView() {
+  _crfOvView.targetZoom = 1;
+  _crfOvView.targetOffsetX = 0;
+  _crfOvView.targetOffsetY = 0;
+  updateCrfOvZoomUI();
+  scheduleCrfOvRender();
+}
+
+function updateCrfOvZoomUI() {
+  const display = document.getElementById('crfOvZoomDisplay');
+  const slider = document.getElementById('crfOvZoomSlider');
+  if (display) display.textContent = Math.round(_crfOvView.targetZoom * 100) + '%';
+  if (slider) slider.value = Math.round(_crfOvView.targetZoom * 100);
+}
+
+function scheduleCrfOvRender() {
+  if (_crfOvAnimFrame) cancelAnimationFrame(_crfOvAnimFrame);
+  const animate = () => {
+    const lerp = 0.25;
+    const dz = _crfOvView.targetZoom - _crfOvView.zoom;
+    const dx = _crfOvView.targetOffsetX - _crfOvView.offsetX;
+    const dy = _crfOvView.targetOffsetY - _crfOvView.offsetY;
+    if (Math.abs(dz) < 0.001 && Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) {
+      _crfOvView.zoom = _crfOvView.targetZoom;
+      _crfOvView.offsetX = _crfOvView.targetOffsetX;
+      _crfOvView.offsetY = _crfOvView.targetOffsetY;
+      _crfOvAnimFrame = null;
+      renderCRFOverview();
+      return;
+    }
+    _crfOvView.zoom += dz * lerp;
+    _crfOvView.offsetX += dx * lerp;
+    _crfOvView.offsetY += dy * lerp;
+    renderCRFOverview();
+    _crfOvAnimFrame = requestAnimationFrame(animate);
+  };
+  _crfOvAnimFrame = requestAnimationFrame(animate);
+}
+
+async function loadCRFOverviewData() {
+  document.getElementById('crfOverviewInfo').textContent = '⏳ 加载中...';
+  try {
+    if (!appState.allData) appState.allData = await fetchAPI('/api/data/all');
+    const data = appState.allData;
+    if (!data || !data.trials) { document.getElementById('crfOverviewInfo').textContent = '无数据'; return; }
+    _crfOvQ = parseInt(document.getElementById('crfOvQuantile')?.value || 5);
+
+    const formal = data.trials.filter(t => t.RT !== null && t.stage === 'formal');
+    const aggByGroup = {};
+    // Compute group-level CRFs
+    for (let gid = 1; gid <= 8; gid++) {
+      const gTrials = formal.filter(t => t.groupID === gid);
+      const selfT = gTrials.filter(t => t.Identity === 'Self');
+      const strangerT = gTrials.filter(t => t.Identity === 'Stranger');
+      const selfCRFRes = computeCRF(selfT, _crfOvQ);
+      const strangerCRFRes = computeCRF(strangerT, _crfOvQ);
+      aggByGroup[gid] = {
+        selfCRF: selfCRFRes ? selfCRFRes.bins : null,
+        strangerCRF: strangerCRFRes ? strangerCRFRes.bins : null,
+        selfOverallACC: selfCRFRes ? selfCRFRes.overallACC : 0,
+        strangerOverallACC: strangerCRFRes ? strangerCRFRes.overallACC : 0,
+      };
+    }
+    // Compute per-subject CRFs
+    const subjMap = {};
+    const subjIds = [...new Set(formal.map(t => `${t.groupID}_${t.subjectID}`))];
+    subjIds.forEach(key => {
+      const [gid, sid] = key.split('_').map(Number);
+      const sTrials = formal.filter(t => t.groupID === gid && t.subjectID === sid);
+      const selfT = sTrials.filter(t => t.Identity === 'Self');
+      const strangerT = sTrials.filter(t => t.Identity === 'Stranger');
+      const sc = computeCRF(selfT, _crfOvQ);
+      const stc = computeCRF(strangerT, _crfOvQ);
+      if (sc && stc) {
+        if (!subjMap[gid]) subjMap[gid] = [];
+        subjMap[gid].push({
+          subjectID: sid,
+          selfCRF: sc.bins,
+          strangerCRF: stc.bins,
+          selfOverallACC: sc.overallACC,
+          strangerOverallACC: stc.overallACC,
+        });
+      }
+    });
+
+    _crfOvData = { aggByGroup, subjMap, nSubj: subjIds.length };
+    document.getElementById('crfOverviewInfo').textContent =
+      `已加载 ${Object.values(subjMap).reduce((s,a)=>s+a.length,0)} 被试 | ` +
+      `8组 × Self/Stranger | Q=${_crfOvQ}`;
+    _crfOvVisible = new Set([1,2,3,4,5,6,7,8]);
+    renderCRFOverview();
+  } catch(e) {
+    document.getElementById('crfOverviewInfo').textContent = '加载失败: ' + e.message;
+  }
+}
+
+function renderCRFOverview() {
+  if (!_crfOvData) return;
+  const canvas = document.getElementById('crfOverviewCanvas');
+  if (!canvas) return;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = rect.width;
+  const cssH = Math.max(280, rect.width * 0.55);
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = cssW, H = cssH;
+
+  const bg = appState.theme === 'light' ? '#fafbfc' : '#0a1628';
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const zoom = _crfOvView.zoom;
+  const ox = _crfOvView.offsetX;
+  const oy = _crfOvView.offsetY;
+
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(zoom, zoom);
+
+  const margin = { l: 56, r: 18, t: 18, b: 48 };
+  const pw = W - margin.l - margin.r, ph = H - margin.t - margin.b;
+
+  const txtC = appState.theme === 'light' ? '#4a5a6a' : '#b0bec5';
+  const gridC = appState.theme === 'light' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.06)';
+  const axisC = appState.theme === 'light' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)';
+
+  const isACC = _crfYMetric === 'acc';
+  const useOverallACC = isACC && _crfACCMode === 'overall';
+  const useBinIndexOv = _crfXAxisMode === 'binIndex';
+  const showSelf = _crfOvShowSelf;
+  const showStranger = _crfOvShowStranger;
+
+  const getOvY = (b, overallACC) => {
+    if (useOverallACC) return overallACC;
+    if (isACC) return b.binACC;
+    return b.upperProp;
+  };
+  const getOvX = (b, idx) => useBinIndexOv ? (idx + 1) : b.rtMean;
+
+  const yTitle = isACC ? (useOverallACC ? 'ACC (overall)' : 'ACC (bin)') : 'P(Match Key)';
+  const xTitleOv = useBinIndexOv ? 'Bin Index' : 'RT bin mean (s)';
+
+  // Plot area background
+  ctx.fillStyle = appState.theme === 'light' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.02)';
+  ctx.fillRect(margin.l, margin.t, pw, ph);
+
+  // Plot area border
+  ctx.strokeStyle = axisC; ctx.lineWidth = 1;
+  ctx.strokeRect(margin.l, margin.t, pw, ph);
+
+  // Horizontal grid lines
+  ctx.strokeStyle = gridC; ctx.lineWidth = 0.6;
+  for (let p = 0; p <= 1; p += 0.25) {
+    const py = margin.t + ph * (1 - p);
+    ctx.beginPath(); ctx.moveTo(margin.l, py); ctx.lineTo(margin.l + pw, py); ctx.stroke();
+  }
+  ctx.strokeStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(margin.l, margin.t + ph/2); ctx.lineTo(margin.l + pw, margin.t + ph/2); ctx.stroke();
+
+  // Y-axis labels
+  ctx.fillStyle = txtC; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'right';
+  for (let p = 0; p <= 1; p += 0.25) {
+    const py = margin.t + ph * (1 - p);
+    ctx.fillText(p.toFixed(2), margin.l - 6, py + 4);
+  }
+
+  // Y-axis title
+  ctx.save();
+  ctx.translate(10, margin.t + ph/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = txtC; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(yTitle, 0, 0);
+  ctx.restore();
+
+  // X-axis title
+  ctx.fillStyle = txtC; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(xTitleOv, margin.l + pw/2, H - 8);
+
+  // Compute X range
+  let xRange;
+  if (useBinIndexOv) {
+    xRange = [0.5, _crfOvQ + 0.5];
+  } else {
+    let rtMin = Infinity, rtMax = -Infinity;
+    for (let gid = 1; gid <= 8; gid++) {
+      if (!_crfOvVisible.has(gid)) continue;
+      if (_crfOvLevel === 'group') {
+        const gd = _crfOvData.aggByGroup[gid];
+        [gd.selfCRF, gd.strangerCRF].forEach(crf => {
+          if (!crf) return;
+          crf.forEach(b => { rtMin = Math.min(rtMin, b.rtMean); rtMax = Math.max(rtMax, b.rtMean); });
+        });
+      } else {
+        const subs = _crfOvData.subjMap[gid];
+        if (!subs) continue;
+        subs.forEach(s => {
+          [s.selfCRF, s.strangerCRF].forEach(crf => {
+            if (!crf) return;
+            crf.forEach(b => { rtMin = Math.min(rtMin, b.rtMean); rtMax = Math.max(rtMax, b.rtMean); });
+          });
+        });
+      }
+    }
+    if (!isFinite(rtMin)) { rtMin = 0.2; rtMax = 1.8; }
+    const pad = Math.max(0.03, (rtMax - rtMin) * 0.08);
+    xRange = [rtMin - pad, rtMax + pad];
+  }
+
+  const xToPx = (x) => margin.l + ((x - xRange[0]) / (xRange[1] - xRange[0])) * pw;
+  const yToPx = (y) => margin.t + ph * (1 - Math.max(0, Math.min(1, y)));
+
+  // X-axis tick labels
+  ctx.fillStyle = txtC; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  if (useBinIndexOv) {
+    for (let i = 1; i <= _crfOvQ; i++) {
+      const px = xToPx(i);
+      ctx.fillText(i.toString(), px, margin.t + ph + 16);
+      ctx.beginPath(); ctx.moveTo(px, margin.t + ph); ctx.lineTo(px, margin.t + ph + 4);
+      ctx.strokeStyle = axisC; ctx.stroke();
+    }
+  } else {
+    const xTickCount = 5;
+    for (let i = 0; i <= xTickCount; i++) {
+      const val = xRange[0] + (xRange[1] - xRange[0]) * i / xTickCount;
+      const px = margin.l + pw * i / xTickCount;
+      ctx.fillText(val.toFixed(2), px, margin.t + ph + 16);
+      ctx.beginPath(); ctx.moveTo(px, margin.t + ph); ctx.lineTo(px, margin.t + ph + 4);
+      ctx.strokeStyle = axisC; ctx.stroke();
+    }
+  }
+
+  const drawFillBand = (selfCRF, strangerCRF, color, alpha, selfOverall, strangerOverall) => {
+    if (!selfCRF || !strangerCRF || selfCRF.length < 2 || strangerCRF.length < 2) return;
+    if (!showSelf || !showStranger) return;
+    ctx.beginPath();
+    const sx0 = xToPx(getOvX(selfCRF[0], 0));
+    const sy0 = yToPx(getOvY(selfCRF[0], selfOverall));
+    ctx.moveTo(sx0, sy0);
+    for (let i = 1; i < selfCRF.length; i++) {
+      ctx.lineTo(xToPx(getOvX(selfCRF[i], i)), yToPx(getOvY(selfCRF[i], selfOverall)));
+    }
+    for (let i = strangerCRF.length - 1; i >= 0; i--) {
+      ctx.lineTo(xToPx(getOvX(strangerCRF[i], i)), yToPx(getOvY(strangerCRF[i], strangerOverall)));
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  };
+
+  const drawCRFLine = (crf, color, dashed, alpha, lineWidth, overallACC) => {
+    if (!crf || crf.length < 2) return;
+    ctx.beginPath();
+    const px0 = xToPx(getOvX(crf[0], 0));
+    const py0 = yToPx(getOvY(crf[0], overallACC));
+    ctx.moveTo(px0, py0);
+    for (let i = 1; i < crf.length; i++) {
+      ctx.lineTo(xToPx(getOvX(crf[i], i)), yToPx(getOvY(crf[i], overallACC)));
+    }
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = lineWidth || 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    if (dashed) ctx.setLineDash([6, 3]); else ctx.setLineDash([]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    crf.forEach((b, i) => {
+      const px = xToPx(getOvX(b, i));
+      const py = yToPx(getOvY(b, overallACC));
+      ctx.fillStyle = color; ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      if (dashed) {
+        ctx.beginPath(); ctx.moveTo(px - 3, py - 3); ctx.lineTo(px + 3, py + 3);
+        ctx.moveTo(px + 3, py - 3); ctx.lineTo(px - 3, py + 3);
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+      } else {
+        ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    });
+  };
+
+  const drawCRFGlow = (crf, color, alpha, overallACC) => {
+    if (!crf || crf.length < 2) return;
+    ctx.beginPath();
+    const px0 = xToPx(getOvX(crf[0], 0));
+    const py0 = yToPx(getOvY(crf[0], overallACC));
+    ctx.moveTo(px0, py0);
+    for (let i = 1; i < crf.length; i++) {
+      ctx.lineTo(xToPx(getOvX(crf[i], i)), yToPx(getOvY(crf[i], overallACC)));
+    }
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  };
+
+  for (let gid = 1; gid <= 8; gid++) {
+    if (!_crfOvVisible.has(gid)) continue;
+    const color = CRF_OV_COLORS[gid - 1];
+
+    if (_crfOvLevel === 'group') {
+      const gd = _crfOvData.aggByGroup[gid];
+      const selfOACC = gd.selfOverallACC || 0;
+      const strangerOACC = gd.strangerOverallACC || 0;
+      drawFillBand(gd.selfCRF, gd.strangerCRF, color, 0.08, selfOACC, strangerOACC);
+      if (showSelf) { drawCRFGlow(gd.selfCRF, color, 0.15, selfOACC); drawCRFLine(gd.selfCRF, color, false, 0.9, 2.5, selfOACC); }
+      if (showStranger) { drawCRFLine(gd.strangerCRF, color, true, 0.6, 1.6, strangerOACC); }
+    } else {
+      const subs = _crfOvData.subjMap[gid];
+      if (!subs) continue;
+      const n = subs.length;
+      subs.forEach((s, idx) => {
+        const alpha = 0.15 + (idx / n) * 0.3;
+        const selfOACC = s.selfOverallACC || 0;
+        const strangerOACC = s.strangerOverallACC || 0;
+        if (showSelf) drawCRFLine(s.selfCRF, color, false, alpha, 1.2, selfOACC);
+        if (showStranger) drawCRFLine(s.strangerCRF, color, true, alpha * 0.5, 0.8, strangerOACC);
+      });
+    }
+  }
+
+  ctx.restore();
+
+  // Bottom group toggle bar
+  const segW = Math.min(44, (W - margin.l - margin.r) / 8);
+  const barX = (W - segW * 8) / 2;
+  const barY = H - 22;
+  ctx.fillStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.03)';
+  ctx.fillRect(barX - 4, barY - 2, segW * 8 + 8, 18);
+  ctx.strokeStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(barX - 4, barY - 2, segW * 8 + 8, 18);
+
+  for (let gid = 1; gid <= 8; gid++) {
+    const x = barX + (gid - 1) * segW;
+    const visible = _crfOvVisible.has(gid);
+    ctx.fillStyle = visible ? CRF_OV_COLORS[gid - 1] : 'rgba(128,128,128,0.25)';
+    ctx.fillRect(x + 2, barY, segW - 4, 14);
+    ctx.fillStyle = visible ? '#fff' : '#999';
+    ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('G' + gid, x + segW/2, barY + 11);
+  }
+
+  buildCrfOvLegend();
+}
+
+function buildCrfOvLegend() {
+  const el = document.getElementById('crfOverviewLegend');
+  if (!el) return;
+  if (!_crfOvData) { el.innerHTML = '<div style="padding:8px;text-align:center;color:var(--text-secondary);width:100%;">请先加载数据</div>'; return; }
+  let html = '<div style="font-weight:700;color:var(--accent);font-size:0.9em;white-space:nowrap;">图例 (点击切换):</div>';
+  for (let gid = 1; gid <= 8; gid++) {
+    const visible = _crfOvVisible.has(gid);
+    const c = visible ? CRF_OV_COLORS[gid - 1] : 'rgba(128,128,128,0.3)';
+    const opacity = visible ? '1' : '0.4';
+    html += `<div style="display:flex;align-items:center;gap:3px;cursor:pointer;opacity:${opacity};padding:1px 4px;border-radius:3px;border:1px solid transparent;" data-ov-g="${gid}">
+      <span style="display:inline-block;width:10px;height:8px;border-radius:50%;background:${c};opacity:0.9;"></span>
+      <span style="font-size:0.9em;font-weight:600;">G${gid}</span></div>`;
+  }
+  html += '<div style="width:1px;height:16px;background:var(--border);margin:0 4px;"></div>';
+  html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;white-space:nowrap;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:' + (_crfOvShowSelf ? 'rgba(255,152,0,0.12)' : 'transparent') + ';" id="crfOvToggleSelf">';
+  html += '<input type="checkbox" id="crfOvCheckSelf" ' + (_crfOvShowSelf ? 'checked' : '') + ' style="accent-color:#ff9800;">';
+  html += '<span style="font-weight:600;color:#ff9800;">● Self</span></label>';
+  html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;white-space:nowrap;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:' + (_crfOvShowStranger ? 'rgba(33,150,243,0.12)' : 'transparent') + ';" id="crfOvToggleStranger">';
+  html += '<input type="checkbox" id="crfOvCheckStranger" ' + (_crfOvShowStranger ? 'checked' : '') + ' style="accent-color:#2196f3;">';
+  html += '<span style="font-weight:600;color:#2196f3;">✕ Stranger</span></label>';
+  html += '<span style="font-size:0.78em;color:var(--text-secondary);margin-left:auto;">浅色填充 = Self−Stranger 差异区域</span>';
+  el.innerHTML = html;
+
+  el.querySelectorAll('[data-ov-g]').forEach(div => {
+    div.addEventListener('click', () => {
+      const gid = parseInt(div.dataset.ovG);
+      if (_crfOvVisible.has(gid)) _crfOvVisible.delete(gid);
+      else _crfOvVisible.add(gid);
+      renderCRFOverview();
+    });
+    div.addEventListener('mouseenter', () => { div.style.borderColor = 'var(--accent)'; });
+    div.addEventListener('mouseleave', () => { div.style.borderColor = 'transparent'; });
+  });
+
+  const selfCheck = document.getElementById('crfOvCheckSelf');
+  if (selfCheck) selfCheck.addEventListener('change', () => {
+    _crfOvShowSelf = selfCheck.checked;
+    renderCRFOverview();
+  });
+  const strangerCheck = document.getElementById('crfOvCheckStranger');
+  if (strangerCheck) strangerCheck.addEventListener('change', () => {
+    _crfOvShowStranger = strangerCheck.checked;
+    renderCRFOverview();
+  });
+}
+
+function updateCrfOvTooltip(e) {
+  // Tooltip for CRF overview - show RT and P(Match) at cursor position
+  if (!_crfOvData) return;
 }
 
 // ==================== TAB 4: DESIGN SPACE ANALYSIS (ggcube 风格多面板设计) ====================
