@@ -1,0 +1,503 @@
+---
+title: "SPE Bayes Factor Analysis — Raw Data"
+subtitle: "Self-Matching Task: Sequential BF10 with BayesFactor"
+author: "AI Assistant"
+date: "2026-06-05"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+if (!requireNamespace('pacman', quietly = TRUE)) {
+  install.packages('pacman')
+}
+pacman::p_load(
+  tidyverse,      # data wrangling
+  BayesFactor,    # BF computation
+  bruceR,         # import/export helpers
+  ggplot2,        # visualization
+  cowplot,        # plot combining
+  scales          # axis formatting
+)
+options(scipen = 999)
+```
+
+# 1. 实验背景与按键映射
+
+## 1.1 实验设计
+
+本研究采用 **Self-Matching Task** (Sui et al., 2012) 范式：
+
+- 被试在联结阶段学习形状（圆形 / 正方形）与身份标签（自我 / 生人）的配对关系
+- 匹配阶段中，屏幕上方呈现形状，下方呈现标签文字
+- 被试判断形状-标签配对是否与学习的一致：**匹配按某键，不匹配按另一个键**
+
+## 1.2 按键映射（`getPairingRules`）
+
+按键分配采用 `mod(subjectID, 4)` 完全交叉平衡：
+
+| mod(subjectID,4) | square-self | square-stranger | circle-self | circle-stranger |
+|:---:|:---:|:---:|:---:|:---:|
+| 0 (4的倍数) | **f** | j | j | **f** |
+| 1 (4k+1) | j | **f** | **f** | j |
+| 2 (其他偶数) | j | **f** | **f** | j |
+| 3 (4k+3) | **f** | j | j | **f** |
+
+## 1.3 匹配/不匹配关系（`correctPairs`）
+
+| mod(subjectID, 2) | 匹配规则 | Matching-self | Matching-stranger |
+|:---:|:---|:---|:---|
+| 0 (偶数) | correctPairs_0 | square + self | circle + stranger |
+| 1 (奇数) | correctPairs_1 | circle + self | square + stranger |
+
+> **本分析仅使用 Matching 试次**，在匹配条件下对比 self vs stranger 标签的表现差异，即自我优势效应 (SPE)。
+
+# 2. 数据加载与预处理
+
+```{r load-data}
+# ============================================================
+# 读取所有原始数据文件
+# ============================================================
+raw_dir <- "../../2_Data/Real_Data/UnExtact/raw"
+csv_files <- list.files(raw_dir, pattern = "EXP_data_group.*\\.csv$", full.names = TRUE)
+cat(sprintf("Found %d raw data files\n", length(csv_files)))
+
+# 合并所有文件
+df_raw <- map_dfr(csv_files, ~ read_csv(.x, show_col_types = FALSE, na = c("NA", "")))
+cat(sprintf("Total trials loaded: %d\n", nrow(df_raw)))
+cat(sprintf("Unique subjects: %d (groupID × subjectID pairs)\n",
+            df_raw %>% distinct(groupID, subjectID) %>% nrow()))
+```
+
+```{r preprocess}
+# ============================================================
+# 数据预处理
+# ============================================================
+
+# 1. 只保留 formal 阶段
+df <- df_raw %>% filter(stage == "formal")
+cat(sprintf("Formal trials: %d\n", nrow(df)))
+
+# 2. 识别 Matching 试次
+#    mod(subjectID, 2) == 0: matching = (square & self) | (circle & stranger)
+#    mod(subjectID, 2) == 1: matching = (square & stranger) | (circle & self)
+df <- df %>%
+  mutate(
+    is_matching = case_when(
+      subjectID %% 2 == 0 ~ (Shape == "square"  & Label == "self")     | (Shape == "circle"   & Label == "stranger"),
+      subjectID %% 2 == 1 ~ (Shape == "square"  & Label == "stranger") | (Shape == "circle"   & Label == "self"),
+      TRUE ~ FALSE
+    )
+  )
+
+cat(sprintf("Matching trials: %d / %d (%.1f%%)\n",
+            sum(df$is_matching), nrow(df), 100 * mean(df$is_matching)))
+
+# 3. 只保留 Matching 试次
+df_match <- df %>% filter(is_matching)
+
+# 4. 创建唯一被试ID
+df_match <- df_match %>%
+  mutate(subj_unique = paste0("G", groupID, "_S", subjectID))
+
+# 5. 处理 Correct 列：NA 视为 omission (标记为 0 正确)
+df_match <- df_match %>%
+  mutate(
+    Correct = if_else(is.na(Correct), 0L, as.integer(Correct)),
+    is_omission = is.na(RT) | RT > (T + W + 0.5)  # omission: 无反应或RT超过T+W+预留
+  )
+```
+
+```{r data-summary}
+# ============================================================
+# 数据概览
+# ============================================================
+cat("\n===== Trial-level summary =====\n")
+
+# 每组被试数和总试次数
+df_match %>%
+  group_by(groupID) %>%
+  summarise(
+    n_subjects = n_distinct(subjectID),
+    n_trials   = n(),
+    omission_pct = mean(is_omission) * 100,
+    acc_mean   = mean(Correct, na.rm = TRUE),
+    rt_mean    = mean(RT[Correct == 1 & !is_omission], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  print(n = 20)
+
+cat(sprintf("\nTotal matching trials: %d\n", nrow(df_match)))
+cat(sprintf("Total unique subjects: %d\n", n_distinct(df_match$subj_unique)))
+```
+
+# 3. 被试级聚合
+
+```{r aggregate-subject}
+# ============================================================
+# 聚合到被试级别：每个被试在 self / stranger 条件下的表现
+# ============================================================
+df_subj <- df_match %>%
+  group_by(groupID, subjectID, subj_unique, P, T, W, Label) %>%
+  summarise(
+    n_trials       = n(),
+    n_correct      = sum(Correct == 1, na.rm = TRUE),
+    n_omission     = sum(is_omission, na.rm = TRUE),
+    acc            = mean(Correct, na.rm = TRUE),
+    rt_mean        = mean(RT[Correct == 1 & !is_omission], na.rm = TRUE),
+    rt_sd          = sd(RT[Correct == 1 & !is_omission], na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 转换为宽格式：每个被试一行，self / stranger 各一列
+df_wide <- df_subj %>%
+  select(groupID, subjectID, subj_unique, P, T, W, Label, acc, rt_mean) %>%
+  pivot_wider(
+    id_cols     = c(groupID, subjectID, subj_unique, P, T, W),
+    names_from  = Label,
+    values_from = c(acc, rt_mean),
+    names_glue  = "{Label}_{.value}"
+  ) %>%
+  mutate(
+    SPE_acc = self_acc - stranger_acc,
+    SPE_rt  = self_rt_mean - stranger_rt_mean   # negative = self faster
+  )
+
+cat(sprintf("Subjects after aggregation: %d\n", nrow(df_wide)))
+cat(sprintf("\nSPE_acc: M = %.4f, SD = %.4f\n", mean(df_wide$SPE_acc), sd(df_wide$SPE_acc)))
+cat(sprintf("SPE_rt (ms): M = %.1f, SD = %.1f\n",
+            mean(df_wide$SPE_rt, na.rm = TRUE) * 1000, sd(df_wide$SPE_rt, na.rm = TRUE) * 1000))
+```
+
+# 4. 贝叶斯因子计算
+
+> **研究假设 H₁**：任务中存在自我优势效应（SPE > 0 for accuracy, SPE < 0 for RT）
+>
+> **停止规则**：当 BF₁₀ ≥ 10 或 BF₁₀ ≤ 0.1 时停止；若达最大样本（每组70人）仍未达标则停止。
+
+```{r bf-main}
+# ============================================================
+# 核心 BF 计算：配对 t 检验 (self vs stranger)
+# ============================================================
+
+# 4.1 正确率 SPE
+bf_acc <- ttestBF(
+  x      = df_wide$self_acc,
+  y      = df_wide$stranger_acc,
+  paired = TRUE,
+  rscale = "medium"   # default r = sqrt(2)/2
+)
+
+# 4.2 反应时 SPE（仅限有配对数据的被试）
+df_rt <- df_wide %>% filter(!is.na(SPE_rt))
+bf_rt <- ttestBF(
+  x      = df_rt$self_rt_mean,
+  y      = df_rt$stranger_rt_mean,
+  paired = TRUE,
+  rscale = "medium"
+)
+
+cat("\n===== 贝叶斯因子 (全体被试) =====\n")
+cat(sprintf("\n正确率 SPE (N=%d):\n", nrow(df_wide)))
+print(bf_acc)
+cat(sprintf("\n反应时 SPE (N=%d):\n", nrow(df_rt)))
+print(bf_rt)
+
+# 提取 BF10 值
+bf10_acc <- extractBF(bf_acc)$bf
+bf10_rt  <- extractBF(bf_rt)$bf
+```
+
+```{r bf-robustness}
+# ============================================================
+# 先验稳健性：不同 rscale 下的 BF
+# ============================================================
+r_scales <- c("medium" = sqrt(2)/2, "wide" = 1, "ultrawide" = sqrt(2))
+bf_robust <- map_dfr(names(r_scales), function(nm) {
+  bf_a <- extractBF(ttestBF(df_wide$self_acc, df_wide$stranger_acc,
+                             paired = TRUE, rscale = r_scales[nm]))$bf
+  bf_r <- extractBF(ttestBF(df_rt$self_rt_mean, df_rt$stranger_rt_mean,
+                             paired = TRUE, rscale = r_scales[nm]))$bf
+  data.frame(rscale = nm, r_value = r_scales[nm], BF10_acc = bf_a, BF10_rt = bf_r)
+})
+
+cat("\n===== 先验稳健性检查 =====\n")
+print(bf_robust)
+```
+
+# 5. 序贯分析：模拟逐步增加被试
+
+```{r sequential}
+# ============================================================
+# 序贯 BF 模拟：模拟逐步增加被试时 BF 的累积变化
+# 研究假设：self > stranger (正确率) 且 self < stranger (RT)
+# ============================================================
+
+# 按组随机排列被试（模拟实际收数据顺序）
+set.seed(42)
+df_seq <- df_wide %>% slice_sample(n = nrow(df_wide))
+
+seq_results <- map_dfr(10:nrow(df_seq), function(i) {
+  sub <- df_seq[1:i, ]
+
+  # 正确率
+  bf_acc_i <- tryCatch({
+    extractBF(ttestBF(sub$self_acc, sub$stranger_acc, paired = TRUE))$bf
+  }, error = function(e) NA_real_)
+
+  # 反应时
+  sub_rt <- sub %>% filter(!is.na(SPE_rt))
+  bf_rt_i <- tryCatch({
+    extractBF(ttestBF(sub_rt$self_rt_mean, sub_rt$stranger_rt_mean, paired = TRUE))$bf
+  }, error = function(e) NA_real_)
+
+  data.frame(
+    n = i,
+    BF10_acc = bf_acc_i,
+    BF10_rt  = bf_rt_i,
+    mean_SPE_acc = mean(sub$SPE_acc),
+    mean_SPE_rt  = mean(sub$SPE_rt, na.rm = TRUE)
+  )
+})
+
+# 找到 BF 首次达到阈值的被试数
+threshold_reached <- function(bf_vec, threshold) {
+  idx <- which(bf_vec >= threshold)
+  if (length(idx) == 0) return(NA_integer_)
+  return(seq_results$n[idx[1]])
+}
+
+n_acc_10 <- threshold_reached(seq_results$BF10_acc, 10)
+n_rt_10  <- threshold_reached(seq_results$BF10_rt, 10)
+n_acc_01 <- threshold_reached(1 / seq_results$BF10_acc, 10)  # BF01 >= 10
+n_rt_01  <- threshold_reached(1 / seq_results$BF10_rt, 10)
+
+cat("\n===== 序贯分析结果 =====\n")
+cat(sprintf("BF10_acc >= 10 first at N = %s\n", ifelse(is.na(n_acc_10), "never", n_acc_10)))
+cat(sprintf("BF10_rt  >= 10 first at N = %s\n", ifelse(is.na(n_rt_10), "never", n_rt_10)))
+cat(sprintf("BF01_acc >= 10 first at N = %s\n", ifelse(is.na(n_acc_01), "never", n_acc_01)))
+cat(sprintf("BF01_rt  >= 10 first at N = %s\n", ifelse(is.na(n_rt_01), "never", n_rt_01)))
+```
+
+```{r sequential-fig, fig.width=12, fig.height=5}
+# ============================================================
+# 序贯 BF 图
+# ============================================================
+p1 <- ggplot(seq_results, aes(x = n)) +
+  geom_hline(yintercept = 1,  linetype = "dashed", color = "gray50") +
+  geom_hline(yintercept = 10, linetype = "dotted", color = "darkgreen") +
+  geom_hline(yintercept = 1/10, linetype = "dotted", color = "darkred") +
+  geom_line(aes(y = BF10_acc), color = "steelblue", linewidth = 1.2) +
+  geom_point(aes(y = BF10_acc), color = "steelblue", size = 1.5) +
+  scale_y_log10(
+    breaks = c(0.01, 0.1, 1, 10, 100),
+    labels = c("0.01\n(H0)", "0.1", "1\n(equivocal)", "10", "100\n(H1)")
+  ) +
+  labs(
+    title  = "Sequential BF10 — Accuracy (self vs stranger)",
+    x      = "Cumulative number of subjects",
+    y      = "BF10 (log scale)"
+  ) +
+  theme_minimal(base_size = 12)
+
+p2 <- ggplot(seq_results, aes(x = n)) +
+  geom_hline(yintercept = 1,  linetype = "dashed", color = "gray50") +
+  geom_hline(yintercept = 10, linetype = "dotted", color = "darkgreen") +
+  geom_hline(yintercept = 1/10, linetype = "dotted", color = "darkred") +
+  geom_line(aes(y = BF10_rt), color = "firebrick", linewidth = 1.2) +
+  geom_point(aes(y = BF10_rt), color = "firebrick", size = 1.5) +
+  scale_y_log10(
+    breaks = c(0.01, 0.1, 1, 10, 100),
+    labels = c("0.01\n(H0)", "0.1", "1\n(equivocal)", "10", "100\n(H1)")
+  ) +
+  labs(
+    title  = "Sequential BF10 — RT (self vs stranger)",
+    x      = "Cumulative number of subjects",
+    y      = "BF10 (log scale)"
+  ) +
+  theme_minimal(base_size = 12)
+
+cowplot::plot_grid(p1, p2, ncol = 2)
+```
+
+# 6. 分组分析：各组 SPE 的 BF
+
+```{r bf-by-group}
+# ============================================================
+# 每组内部的 BF
+# ============================================================
+cat("\n===== 各组 BF10 =====\n")
+group_bf <- df_wide %>%
+  group_by(groupID, P, T, W) %>%
+  summarise(
+    n = n(),
+    mean_SPE_acc = mean(SPE_acc),
+    mean_SPE_rt  = mean(SPE_rt, na.rm = TRUE),
+    bf10_acc = tryCatch(
+      extractBF(ttestBF(self_acc, stranger_acc, paired = TRUE))$bf,
+      error = function(e) NA_real_
+    ),
+    bf10_rt  = tryCatch(
+      extractBF(ttestBF(self_rt_mean, stranger_rt_mean, paired = TRUE))$bf,
+      error = function(e) NA_real_
+    ),
+    .groups = "drop"
+  )
+
+print(group_bf %>% select(-P, -T, -W), n = 20)
+```
+
+```{r bf-by-group-fig, fig.width=10, fig.height=5}
+# 各组 BF 可视化
+group_bf_long <- group_bf %>%
+  pivot_longer(cols = c(bf10_acc, bf10_rt), names_to = "measure", values_to = "BF10") %>%
+  mutate(
+    measure = recode(measure, bf10_acc = "Accuracy", bf10_rt = "RT"),
+    group_label = paste0("G", groupID, "\n(P=", P, ",T=", T*1000, ",W=", W*1000, ")")
+  )
+
+ggplot(group_bf_long, aes(x = group_label, y = BF10, fill = measure)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6, color = "black", linewidth = 0.3) +
+  geom_hline(yintercept = 1,  linetype = "dashed", color = "gray50") +
+  geom_hline(yintercept = 10, linetype = "dotted", color = "darkgreen") +
+  geom_hline(yintercept = 1/10, linetype = "dotted", color = "darkred") +
+  scale_y_log10() +
+  scale_fill_manual(values = c("Accuracy" = "steelblue", "RT" = "firebrick")) +
+  labs(
+    title = "Bayes Factor by Group",
+    x = "Group (P=practice, T=stimulus ms, W=window ms)",
+    y = "BF10 (log scale)",
+    fill = "Measure"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(size = 8))
+```
+
+# 7. 可视化：SPE 总览
+
+```{r spe-overview-fig, fig.width=12, fig.height=6}
+# ============================================================
+# SPE 概览图
+# ============================================================
+p_acc <- df_wide %>%
+  mutate(group_label = factor(
+    paste0("G", groupID), levels = paste0("G", sort(unique(groupID)))
+  )) %>%
+  ggplot(aes(x = group_label, y = SPE_acc)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_boxplot(aes(fill = group_label), alpha = 0.6, outlier.size = 1) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  labs(title = "SPE — Accuracy (self - stranger)", x = "Group", y = "SPE (accuracy diff)") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+p_rt <- df_wide %>%
+  mutate(group_label = factor(
+    paste0("G", groupID), levels = paste0("G", sort(unique(groupID)))
+  )) %>%
+  ggplot(aes(x = group_label, y = SPE_rt * 1000)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_boxplot(aes(fill = group_label), alpha = 0.6, outlier.size = 1) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  labs(
+    title = "SPE — RT (self - stranger, ms)",
+    x = "Group",
+    y = "SPE (RT diff, ms, negative = self faster)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+cowplot::plot_grid(p_acc, p_rt, ncol = 2)
+```
+
+# 8. 结果汇总
+
+```{r summary-table}
+# ============================================================
+# 最终结果汇总
+# ============================================================
+final_summary <- data.frame(
+  Metric = c(
+    "总被试数",
+    "Matching 试次总数",
+    "SPE_acc 均值 ± SD",
+    "SPE_rt 均值 ± SD (ms)",
+    "BF10_acc (medium prior)",
+    "BF10_rt (medium prior)",
+    "BF10_acc >= 10 所需 N",
+    "BF10_rt >= 10 所需 N",
+    "BF01_acc >= 10 所需 N",
+    "BF01_rt >= 10 所需 N"
+  ),
+  Value = c(
+    nrow(df_wide),
+    nrow(df_match),
+    sprintf("%.4f ± %.4f", mean(df_wide$SPE_acc), sd(df_wide$SPE_acc)),
+    sprintf("%.1f ± %.1f", mean(df_wide$SPE_rt, na.rm = TRUE) * 1000,
+            sd(df_wide$SPE_rt, na.rm = TRUE) * 1000),
+    sprintf("%.2f", bf10_acc),
+    sprintf("%.2f", bf10_rt),
+    ifelse(is.na(n_acc_10), "未达到", as.character(n_acc_10)),
+    ifelse(is.na(n_rt_10), "未达到", as.character(n_rt_10)),
+    ifelse(is.na(n_acc_01), "未达到", as.character(n_acc_01)),
+    ifelse(is.na(n_rt_01), "未达到", as.character(n_rt_01))
+  )
+)
+
+knitr::kable(final_summary, caption = "SPE Bayes Factor Analysis Summary")
+```
+
+## 解读
+
+```{r interpretation}
+cat(sprintf(
+  "\n===== 最终判断 =====\n\n",
+  "根据 Jeffreys (1961) 分类标准：\n",
+  "  BF10 > 100     → Decisive evidence for H1\n",
+  "  BF10 30–100    → Very strong evidence for H1\n",
+  "  BF10 10–30     → Strong evidence for H1\n",
+  "  BF10 3–10      → Substantial evidence for H1\n",
+  "  BF10 1–3       → Anecdotal evidence for H1\n",
+  "  BF10 1/3–1     → Anecdotal evidence for H0\n",
+  "  BF10 1/10–1/3  → Substantial evidence for H0\n",
+  "  BF10 1/30–1/10 → Strong evidence for H0\n",
+  "  BF10 1/100–1/30 → Very strong evidence for H0\n",
+  "  BF10 < 1/100   → Decisive evidence for H0\n\n"
+))
+
+cat(sprintf("当前正确率 BF10 = %.2f\n", bf10_acc))
+cat(sprintf("当前反应时 BF10 = %.2f\n", bf10_rt))
+
+if (bf10_acc >= 10) {
+  cat("→ 正确率: 有 STRONG 证据支持自我优势效应 (SPE) 的存在。\n")
+} else if (bf10_acc >= 3) {
+  cat("→ 正确率: 有 SUBSTANTIAL 证据支持自我优势效应 (SPE) 的存在。\n")
+} else if (bf10_acc >= 1) {
+  cat("→ 正确率: 仅有 ANECDOTAL 证据支持 SPE。\n")
+} else if (bf10_acc >= 1/3) {
+  cat("→ 正确率: 仅有 ANECDOTAL 证据支持零假设。\n")
+} else if (bf10_acc >= 1/10) {
+  cat("→ 正确率: 有 SUBSTANTIAL 证据支持零假设 (无SPE)。\n")
+} else {
+  cat("→ 正确率: 有 STRONG 证据支持零假设 (无SPE)。\n")
+}
+
+if (bf10_rt >= 10) {
+  cat("→ 反应时: 有 STRONG 证据支持自我优势效应 (SPE) 的存在。\n")
+} else if (bf10_rt >= 3) {
+  cat("→ 反应时: 有 SUBSTANTIAL 证据支持自我优势效应 (SPE) 的存在。\n")
+} else if (bf10_rt >= 1) {
+  cat("→ 反应时: 仅有 ANECDOTAL 证据支持 SPE。\n")
+} else if (bf10_rt >= 1/3) {
+  cat("→ 反应时: 仅有 ANECDOTAL 证据支持零假设。\n")
+} else if (bf10_rt >= 1/10) {
+  cat("→ 反应时: 有 SUBSTANTIAL 证据支持零假设 (无SPE)。\n")
+} else {
+  cat("→ 反应时: 有 STRONG 证据支持零假设 (无SPE)。\n")
+}
+```

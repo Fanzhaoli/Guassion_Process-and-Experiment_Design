@@ -76,18 +76,62 @@ doc.add_paragraph(
     '自我优势效应（Self-Prioritization Effect, SPE）是指个体对与自我相关的刺激加工更快、'
     '更准的现象（Sui et al., 2012）。在 Self-Matching Task（SMT）范式中，被试通过联结学习'
     '将几何图形与身份标签（自我 vs. 陌生人）建立关联，随后在匹配任务中根据图形-标签的'
-    '匹配关系做出按键反应。SMT 范式的一个关键优势在于实验参数（如练习次数 P、刺激呈现'
-    '时间 T、反应窗口 W）可以系统性操控，从而直接调控 SPE 的表达。然而，当前文献中缺乏'
-    '对不同实验设计参数组合下 SPE 变化的系统性预测框架。本研究旨在构建一个基于漂移扩散'
-    '模型（DDM）和高斯过程（GP）的生成模型，以实现对任意实验设计参数组合 (P, T, W) '
-    '下 DDM 参数的预测，从而为实验设计优化提供量化工具。')
+    '匹配关系做出按键反应。SMT 范式的一个关键优势在于实验参数——练习次数 P（practice trials）、'
+    '刺激呈现时间 T（stimulus duration）与反应窗口 W（response window）——可以系统性操控，'
+    '从而直接调控 SPE 的表达。')
 
-doc.add_heading('1.2  研究问题与目标', level=2)
-doc.add_paragraph('本研究围绕以下核心问题展开：')
+doc.add_heading('1.2  理论框架：从实验参数到心理过程的映射', level=2)
+doc.add_paragraph(
+    '本研究的理论基底建立在以下命题之上：实验设计参数 (P, T, W) 通过影响特定的心理过程，'
+    '进而调控 SPE 的强度和行为表现。具体而言，我们提出四条核心假设——每一条假设将一个'
+    '实验参数映射到漂移扩散模型（DDM; Ratcliff, 1978; Ratcliff & McKoon, 2008）的具体参数，'
+    '并选择 Sigmoid 函数作为该映射的数学形式。')
+
+doc.add_heading('1.2.1 假设一：P → v（练习影响漂移率）', level=3)
+doc.add_paragraph(
+    '练习次数 P 影响漂移率 v：随着练习次数增加，被试对图形-身份联结的熟悉度提升，'
+    '信息累积速率加快（v 增大）。这一假设得到了 DDM 框架下任务相关练习效应研究的支持，'
+    '练习被证明系统性地提升漂移率（Dutilh et al., 2011）。在数学上，该关系通过 v_P(P) 函数'
+    '建模——该函数本身为 Sigmoid 形式，反映了少量练习近乎无效（P < 4）、达到阈值后'
+    '快速学习（P ≈ 8-32）、充分练习后趋于饱和（P > 60）的三阶段模式。')
+
+doc.add_heading('1.2.2 假设二：T → v（刺激呈现时间影响漂移率）', level=3)
+doc.add_paragraph(
+    '刺激呈现时间 T 主要影响漂移率 v 而非非决策时间 Ter。我们的核心论证是：T 越短，'
+    '被试从刺激中提取的知觉信息越不完整，对图形-标签匹配质量的判断越不确定——这表现'
+    '为漂移率 v 的降低。选择将 T 映射到 v 而非 Ter 是一个有条件且可检验的建模选择：'
+    '本研究在 HDDM 拟合中允许 Ter 作为自由参数在各组间变化，若 T 的确对 Ter 有独立的'
+    '系统性效应，该效应将在参数诊断分析中被检测到。'
+    '这一处理方式亦与 DDM 文献中刺激质量对漂移率的调控作用相一致'
+    '（Ratcliff & McKoon, 2008）。')
+
+doc.add_heading('1.2.3 假设三：M = T + W → a（时间压力影响决策边界）', level=3)
+doc.add_paragraph(
+    '总可用时间 M = T + W 影响决策边界 a：当时间压力大（M 较短）时，被试倾向于快速'
+    '反应，决策标准降低（a 减小）；当时间充裕（M 较长）时，被试可进行更谨慎的判断'
+    '（a 增大）。这一速度-准确性权衡通过 boundary separation 实现，是 DDM 文献中最确凿'
+    '的发现之一（Voss et al., 2004; Ratcliff & McKoon, 2008）。'
+    '值得注意的是，T 在模型中扮演双重角色：作为信息质量来源影响 v_T(T)，同时也作为时间'
+    '预算组成部分通过 M = T + W 影响 a(M)。这两种路径的预测方向相反——更长的 T 同时'
+    '意味着更高的 v（→ 更快反应）和更大的 M（→ 更高边界 → 更慢反应）——构成了模型'
+    '内部的理论张力，使得 Sigmoid 函数能够自然地平衡这两种冲突性预测。')
+
+doc.add_heading('1.2.4 假设四：Sigmoid 函数作为映射的数学形式', level=3)
+doc.add_paragraph(
+    '上述三条映射均采用 Sigmoid 函数（S 型曲线）作为数学形式。选择 Sigmoid 的心理物理学'
+    '依据在于：首先，v_T(T) 反映了典型的阈值-增长-饱和模式——当 T 低于知觉阈值（约 50ms）'
+    '时信息不可用（v_T ≈ 0），跨过阈值后信息质量快速增长，T > 200ms 后边际收益递减'
+    '（Luce, 1986）。其次，v_P(P) 同样遵循学习曲线的三段模式——少量练习近乎无效，'
+    '中等练习快速提升，大量练习趋于平台。'
+    '最后，a(M) 反映了时间压力对决策标准的三阶段调节——M 极短时决策标准趋于最低值，'
+    'M 增加至中等水平时标准快速提高，M 充分大时趋于稳定。')
+
+doc.add_heading('1.3  研究问题与目标', level=2)
+doc.add_paragraph('基于上述理论框架，本研究围绕以下核心问题展开：')
 items = [
     'RQ1: 遗漏试次（Omission）的不同处理方法如何影响 DDM 参数的估计？（方法论问题）',
-    'RQ2: 如何构建一个理论驱动的生成模型，能够从实验设计参数 (P, T, W) 预测 DDM '
-    '参数 (v, a, t, z)？（建模问题）',
+    'RQ2: 如何基于上述理论假设构建一个 Sigmoid+GP 混合生成模型，从 (P, T, W) '
+    '预测 DDM 参数 (v, a, t, z)？（建模问题）',
     'RQ3: 该生成模型的预测能力如何进行交叉验证和行为层面验证？（验证问题）',
     'RQ4: 基于模型的预测不确定性，如何推荐最优的下一轮实验设计参数？（应用问题）',
     'RQ5: 模型对新实验条件的预测能否被独立采集的验证数据所支持？（外部验证问题）',
@@ -95,14 +139,27 @@ items = [
 for item in items:
     doc.add_paragraph(item, style='List Bullet')
 
-doc.add_heading('1.3  研究意义', level=2)
+doc.add_heading('1.4  研究意义', level=2)
 doc.add_paragraph(
-    '理论意义：（1）将 DDM 的参数化预测与高斯过程的非参数灵活性相结合，提供了一种'
-    '新的混合建模框架；（2）对 omission 处理方法的系统性比较填补了方法论文献的空白'
-    '（回应 Leng et al., 2025 的呼吁）。实践意义：（1）为 SMT 实验设计提供了量化的参数'
-    '选择指导；（2）降低了实验设计中的试错成本，提高了 SPE 测量精度。')
+    '理论意义：（1）提出了从实验参数到 DDM 参数的系统性理论映射框架，将四条具体的'
+    '心理过程假设统一在 Sigmoid 数学形式之下——Sigmoid 提供了理论刚性（规定映射方向），'
+    'GP 提供了数据柔性（捕捉理论无法解释的系统残差），这种"理论引导、数据校准"的混合'
+    '方法在 DDM 实验设计优化领域尚属首次尝试；（2）对 omission 处理方法的系统性比较'
+    '填补了方法论文献的空白（回应 Leng et al., 2025 的呼吁）。'
+    '实践意义：（1）为 SMT 实验设计提供了量化的参数选择指导；'
+    '（2）降低了实验设计中的试错成本，提高了 SPE 测量精度。')
 
-doc.add_heading('1.4  论文结构概述', level=2)
+doc.add_heading('1.5  方法论文撑：为什么是混合模型？', level=2)
+doc.add_paragraph(
+    '需要特别说明为什么本研究不满足于纯 Sigmoid 或纯 GP 建模。'
+    '对真实实验数据的初步分析表明：单因素 ANOVA 显示 8 组实验条件间 SPE 存在显著差异'
+    '（F(7,80) = 2.60, p = .018），但以 P、T、W 为预测变量的多元线性回归对 SPE 几乎没有'
+    '解释力（R² = .055, BF₁₀ = 0.76）。'
+    '这一矛盾恰恰说明了引入非线性混合模型的必要性：P、T、W 对 SPE 的影响并非简单的'
+    '线性叠加，而是非线性且交互性的——这正是 Sigmoid（提供非线性理论先验）和高斯过程'
+    '（捕捉残差和交互效应）各自发挥所长之处。')
+
+doc.add_heading('1.6  论文结构概述', level=2)
 doc.add_paragraph('本文共分为三部分：第一部分（第2章）为文献综述，系统回顾 SMT 范式、DDM '
                   '理论及 GP 方法的相关研究；第二部分（第3-5章）包含三项实证研究；第三部分'
                   '（第6章）为总讨论，总结研究发现并提出未来研究方向。')
@@ -228,12 +285,41 @@ doc.add_paragraph(
 
 doc.add_heading('4.2.2  Sigmoid 理论参数化', level=3)
 doc.add_paragraph(
-    '定义 Sigmoid v 函数：v(T, P, condition) = v_T(T) × v_P(P) × base_scale_v '
-    '× (1 + condition_modulation)。其中 v_T 和 v_P 均为 Sigmoid 形式，condition_modulation '
-    '取决于 self（alaph1）还是 stranger（alaph2）条件。定义 Sigmoid a 函数：'
-    'a(M) = Sigmoid(M) × base_scale_a × (1 + boundary_modulation)。'
+    '基于第 1.2 节提出的四条理论假设，我们定义了两组 Sigmoid 函数来量化实验参数与 DDM '
+    '参数之间的映射关系：')
+p = doc.add_paragraph()
+run = p.add_run('Sigmoid v 函数——漂移率的理论参数化：')
+run.bold = True
+doc.add_paragraph(
+    'v(T, P, condition) = v_T(T) × v_P(P) × base_scale_v × (1 + condition_modulation)，'
+    '其中 condition_modulation 取 alaph1（self 条件）或 alaph2（stranger 条件）。'
+    '此函数体现了假设一和假设二：v_P(P) 捕捉练习对漂移率的提升（Sigmoid 形式，参数 gamma '
+    '控制学习速率），v_T(T) 捕捉刺激呈现时间对信息质量的影响（Sigmoid 形式，T_0 = 100ms '
+    '为拐点，k_T = 0.01 为陡峭度），base_scale_v 为整体幅度缩放因子。')
+p = doc.add_paragraph()
+run = p.add_run('Sigmoid a 函数——决策边界的理论参数化：')
+run.bold = True
+doc.add_paragraph(
+    'a(M) = Sigmoid(M; M_0 = 600, k_a = 0.01) × base_scale_a × (1 + boundary_modulation)，'
+    '其中 boundary_modulation 取 beta1（高 M 条件，M > 600ms）或 beta2（低 M 条件，'
+    'M ≤ 600ms）。此函数体现了假设三：M = T + W 越短，时间压力越大，a 越低。')
+
+p = doc.add_paragraph()
+run = p.add_run('\n关于 T 双重角色的理论说明：')
+run.bold = True
+doc.add_paragraph(
+    'T 同时出现在 v_T(T) 和 a(M) = a(T + W) 中。这不是模型的参数冗余，而是实验参数 T '
+    '双重心理效应的理论反映：作为信息质量来源，T 通过 v_T 影响"信息累积有多快"；作为时间'
+    '预算的组成部分，T 通过 M 影响"决策有多谨慎"。两者预测方向相反——更长的 T → 更高 v '
+    '（→ 更快 RT）但同时 → 更大 M（→ 更高 a → 更慢 RT）。Sigmoid 函数的非线性形式'
+    '使模型能够自然地平衡这两种冲突性预测，而不需要引入额外的调节参数。'
+    '这一 T 的双重角色假设的可检验性在于：若 T 仅通过 v 起作用，则各组间 a 的差异应完全'
+    '由 T+W 对应的 M 解释，不依赖于 T 的单独贡献。')
+
+doc.add_paragraph(
     '共计 7 个可优化参数（alaph1, alaph2, beta1, beta2, gamma, base_scale_v, base_scale_a），'
-    '2 个基线参数（T_0=100, k_T=0.01, M_0=600, k_a=0.01 等固定参数）。')
+    '其余参数（T_0 = 100, k_T = 0.01, M_0 = 600, k_a = 0.01 等）基于心理物理学依据'
+    '（Luce, 1986; Ratcliff & McKoon, 2008）取固定值。完整的参数表及可优化性分析见附录 A。')
 
 doc.add_heading('4.2.3  Sigmoid 参数校准', level=3)
 doc.add_paragraph(
