@@ -198,6 +198,7 @@ button.danger { background: #d32f2f; border-color: #d32f2f; }
   <button class="tab-btn" data-tab="tab-data">数据选择与浏览</button>
   <button class="tab-btn" data-tab="tab-visualization">交互式CRF可视化</button>
   <button class="tab-btn" data-tab="tab-design">设计空间分析</button>
+  <button class="tab-btn" data-tab="tab-spe">SPE数据库</button>
 </div>
 
 <div class="main-content">
@@ -343,6 +344,7 @@ function renderTabContent() {
     case 'tab-data': renderDataTab(lp, rp); break;
     case 'tab-visualization': renderVisualizationTab(lp, rp); break;
     case 'tab-design': renderDesignTab(lp, rp); break;
+    case 'tab-spe': renderSPETab(lp, rp); break;
   }
 }
 
@@ -5193,6 +5195,489 @@ async function init() {
     if (appState.currentTab === 'tab-visualization') updateCRFGroupTabStyles();
   });
   renderTabContent();
+}
+
+// ==================== TAB: SPE DATABASE ====================
+let _speData = null;
+let _speDetailData = null;
+let _speCharts = [];
+
+function destroySPECharts() {
+  _speCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
+  _speCharts = [];
+}
+
+function renderSPETab(lp, rp) {
+  destroySPECharts();
+  lp.innerHTML = `
+    <div class="section-title">SPE 数据库 — P·T·W 与自我加工效应</div>
+    <div style="font-size:0.78em;color:var(--text-secondary);margin-bottom:8px;line-height:1.5;">
+      60项实验的元分析级数据浏览。SPE = Self − Stranger 效应量 (Cohen's d)。
+    </div>
+    <div id="speBtnRow" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+      <button class="crf-mode-btn active" id="speBtnOverview" style="font-size:0.78em;">群体总览</button>
+      <button class="crf-mode-btn" id="speBtnPW" style="font-size:0.78em;">P vs SPE</button>
+      <button class="crf-mode-btn" id="speBtnTW" style="font-size:0.78em;">T·W vs SPE</button>
+      <button class="crf-mode-btn" id="speBtnIndividual" style="font-size:0.78em;">个体详情</button>
+    </div>
+    <div id="speFilterArea" style="font-size:0.75em;margin-bottom:8px;"></div>
+    <div id="speLeftDetail" style="overflow-y:auto;max-height:calc(100vh - 260px);"></div>
+  `;
+  rp.innerHTML = `
+    <div id="speRightCharts" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;height:100%;">
+      <div style="text-align:center;color:var(--text-secondary);padding-top:80px;font-size:0.9em;">
+        点击左侧 <b>加载SPE数据</b> 或选择视图模式
+      </div>
+    </div>
+  `;
+
+  document.getElementById('speBtnOverview').addEventListener('click', () => switchSPEView('overview'));
+  document.getElementById('speBtnPW').addEventListener('click', () => switchSPEView('pw'));
+  document.getElementById('speBtnTW').addEventListener('click', () => switchSPEView('tw'));
+  document.getElementById('speBtnIndividual').addEventListener('click', () => switchSPEView('individual'));
+  switchSPEView('overview');
+}
+
+function setSPEActiveBtn(id) {
+  ['speBtnOverview','speBtnPW','speBtnTW','speBtnIndividual'].forEach(bid => {
+    const el = document.getElementById(bid); if (el) el.classList.remove('active');
+  });
+  const a = document.getElementById(id); if (a) a.classList.add('active');
+}
+
+async function ensureSPEData() {
+  if (_speData) return _speData;
+  const rp = document.getElementById('speRightCharts');
+  if (rp) rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:var(--accent);">⏳ 加载SPE数据库 (计算Cohen\'s d中...)</div>';
+  try {
+    _speData = await fetchAPI('/api/spe/overview');
+    return _speData;
+  } catch(e) {
+    if (rp) rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:#f44336;">加载失败: '+e.message+'</div>';
+    return null;
+  }
+}
+
+function switchSPEView(view) {
+  switch(view) {
+    case 'overview': setSPEActiveBtn('speBtnOverview'); renderSPEOverview(); break;
+    case 'pw': setSPEActiveBtn('speBtnPW'); renderSPEPW(); break;
+    case 'tw': setSPEActiveBtn('speBtnTW'); renderSPETW(); break;
+    case 'individual': setSPEActiveBtn('speBtnIndividual'); renderSPEIndividual(); break;
+  }
+}
+
+// --- Group Overview ---
+async function renderSPEOverview() {
+  const data = await ensureSPEData();
+  if (!data || !data.experiments) return;
+  destroySPECharts();
+  const exps = data.experiments.filter(e => e.spe_rt_d !== null);
+  const nValid = exps.length;
+  const nTotal = data.experiments.length;
+  const rp = document.getElementById('speRightCharts');
+  rp.innerHTML = `
+    <div style="font-weight:600;color:var(--accent);">群体总览 (${nValid}/${nTotal} 实验有有效SPE)</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:320px;height:300px;"><canvas id="speHistRT"></canvas></div>
+      <div style="flex:1;min-width:320px;height:300px;"><canvas id="speHistACC"></canvas></div>
+    </div>
+    <div style="font-size:0.72em;color:var(--text-secondary);line-height:1.5;">
+      SPE<sub>RT</sub> 均值=${(exps.reduce((s,e)=>s+e.spe_rt_d,0)/nValid).toFixed(3)}, 
+      SD=${Math.sqrt(exps.reduce((s,e)=>s+(e.spe_rt_d-exps.reduce((s2,e2)=>s2+e2.spe_rt_d,0)/nValid)**2,0)/nValid).toFixed(3)},
+      范围=[${exps.reduce((a,e)=>Math.min(a,e.spe_rt_d),Infinity).toFixed(3)}, ${exps.reduce((a,e)=>Math.max(a,e.spe_rt_d),-Infinity).toFixed(3)}]
+    </div>
+  `;
+  renderSPEHistogram('speHistRT', exps.map(e => e.spe_rt_d), 'SPE (RT Cohen\'s d)', '#ff9800');
+  renderSPEHistogram('speHistACC', exps.filter(e=>e.spe_acc_d!==null).map(e=>e.spe_acc_d), 'SPE (ACC Cohen\'s d)', '#4caf50');
+
+  // Left panel: experiment list
+  const ld = document.getElementById('speLeftDetail');
+  ld.innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px;">实验列表 (点击查看详情)</div>
+    <div style="max-height:calc(100vh - 300px);overflow-y:auto;">
+      ${data.experiments.map(e => {
+        const d = e.spe_rt_d;
+        const color = d === null ? '#888' : (d > 0 ? '#ff9800' : '#2196f3');
+        const sign = d === null ? 'N/A' : (d > 0 ? '+' : '');
+        return `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.72em;display:flex;justify-content:space-between;">
+          <span>${e.pairKey}</span>
+          <span style="color:${color};font-weight:600;">${sign}${d !== null ? d.toFixed(3) : 'N/A'}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+  ld.querySelectorAll('.spe-exp-row').forEach(row => {
+    row.addEventListener('click', () => {
+      switchSPEView('individual');
+      setTimeout(() => loadSPEDetail(row.dataset.key), 100);
+    });
+    row.addEventListener('mouseenter', () => row.style.background = 'var(--bg-hover)');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+  });
+}
+
+function renderSPEHistogram(canvasId, values, label, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || values.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: values.map((_,i) => ''),
+      datasets: [{
+        label: label,
+        data: values.sort((a,b)=>a-b),
+        backgroundColor: withAlpha(color, 0.6),
+        borderColor: color,
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        title: { display: true, text: label, color: appState.theme==='light'?'#2c3e50':'#e0e0e0' }
+      },
+      scales: {
+        x: { display: false },
+        y: { title: { display: true, text: '实验数' } }
+      },
+    }
+  });
+  _speCharts.push(chart);
+}
+
+// --- P vs SPE ---
+async function renderSPEPW() {
+  const data = await ensureSPEData();
+  if (!data) return;
+  destroySPECharts();
+  const valid = data.experiments.filter(e => e.spe_rt_d !== null && e.P_ms !== null);
+  const rp = document.getElementById('speRightCharts');
+  rp.innerHTML = `
+    <div style="font-weight:600;color:var(--accent);">P (练习试次) vs SPE (N=${valid.length})</div>
+    <div style="height:350px;"><canvas id="spePvRT"></canvas></div>
+    <div style="font-size:0.72em;color:var(--text-secondary);">P = 练习试次数 | SPE = Cohen's d (RT Self vs Stranger)</div>
+  `;
+  const scatterData = valid.map(e => ({x: e.P_ms, y: e.spe_rt_d, label: e.pairKey}));
+  renderSPEScatter('spePvRT', scatterData, 'P (trials)', 'SPE (RT d)', '#e91e63');
+
+  const ld = document.getElementById('speLeftDetail');
+  ld.innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px;">P 参数统计</div>
+    <div style="font-size:0.75em;line-height:1.6;">
+      ${Array.from(new Set(valid.map(e=>e.P_ms))).sort((a,b)=>a-b).map(p => {
+        const subs = valid.filter(e=>e.P_ms===p);
+        const avgD = subs.reduce((s,e)=>s+e.spe_rt_d,0)/subs.length;
+        return `<div>P=${p}: N=${subs.length}, 平均SPE=${avgD.toFixed(3)}</div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+// --- T·W vs SPE ---
+async function renderSPETW() {
+  const data = await ensureSPEData();
+  if (!data) return;
+  destroySPECharts();
+  const validW = data.experiments.filter(e => e.spe_rt_d !== null && e.W_ms !== null);
+  const validT = data.experiments.filter(e => e.spe_rt_d !== null && e.T_ms !== null);
+  const rp = document.getElementById('speRightCharts');
+  rp.innerHTML = `
+    <div style="font-weight:600;color:var(--accent);">反应窗口 W 和刺激时长 T 与 SPE 的关系</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:320px;height:320px;"><canvas id="speWvRT"></canvas></div>
+      <div style="flex:1;min-width:320px;height:320px;"><canvas id="speTvRT"></canvas></div>
+    </div>
+    <div style="font-size:0.72em;color:var(--text-secondary);">
+      W = 反应窗口 (ms), T = 刺激呈现时间 (ms)<br>
+      红色虚线 = 线性回归趋势
+    </div>
+  `;
+  renderSPEScatter('speWvRT', validW.map(e => ({x: e.W_ms, y: e.spe_rt_d, label: e.pairKey})), 'W (反应窗口 ms)', 'SPE (RT d)', '#2196f3');
+  renderSPEScatter('speTvRT', validT.map(e => ({x: e.T_ms, y: e.spe_rt_d, label: e.pairKey})), 'T (刺激时长 ms)', 'SPE (RT d)', '#9c27b0');
+
+  // Summary stats
+  const ld = document.getElementById('speLeftDetail');
+  const wGroups = {};
+  validW.forEach(e => { const k = e.W_ms; if (!wGroups[k]) wGroups[k] = []; wGroups[k].push(e.spe_rt_d); });
+  ld.innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px;">W 窗口分析</div>
+    <div style="font-size:0.75em;line-height:1.6;">
+      <div><b>反应窗口与SPE相关性:</b> r=${pearsonR(validW.map(e=>e.W_ms), validW.map(e=>e.spe_rt_d)).toFixed(3)}</div>
+      ${Object.entries(wGroups).sort((a,b)=>a[0]-b[0]).map(([w,ds]) => {
+        const avg = ds.reduce((s,v)=>s+v,0)/ds.length;
+        return `<div>W=${w}ms: N=${ds.length}, 平均SPE=${avg.toFixed(3)}</div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderSPEScatter(canvasId, points, xLabel, yLabel, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || points.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+
+  const datasets = [{
+    label: yLabel,
+    data: points,
+    backgroundColor: withAlpha(color, 0.6),
+    borderColor: color,
+    pointRadius: 5,
+    pointHoverRadius: 8,
+  }];
+
+  // Linear regression
+  const xs = points.map(p => p.x), ys = points.map(p => p.y);
+  const fit = linearFit(xs, ys);
+  if (fit) {
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    datasets.push({
+      label: 'Linear trend',
+      data: [{x: xMin, y: fit.slope*xMin+fit.intercept}, {x: xMax, y: fit.slope*xMax+fit.intercept}],
+      borderColor: withAlpha('#f44336', 0.6),
+      backgroundColor: 'transparent',
+      pointRadius: 0, borderWidth: 1.5, borderDash: [6, 3], showLine: true,
+    });
+  }
+
+  const chart = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: textColor, filter: item => !item.text.includes('trend') } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.dataset.label.includes('trend')) return '';
+              const p = points[ctx.dataIndex];
+              return p ? `${p.label}: ${xLabel}=${p.x}, SPE=${p.y.toFixed(3)}` : '';
+            }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: xLabel, color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { title: { display: true, text: yLabel, color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+      }
+    }
+  });
+  _speCharts.push(chart);
+}
+
+// --- Individual Detail ---
+async function renderSPEIndividual() {
+  const ld = document.getElementById('speLeftDetail');
+  ld.innerHTML = `
+    <div style="font-weight:600;margin-bottom:6px;">选择实验查看个体详情</div>
+    <input type="text" id="speSearchInput" placeholder="搜索实验名称..." style="width:100%;font-size:0.8em;padding:4px 8px;margin-bottom:6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card);color:var(--text);">
+    <div id="speSearchResults" style="max-height:calc(100vh - 360px);overflow-y:auto;font-size:0.75em;"></div>
+  `;
+  const searchInput = document.getElementById('speSearchInput');
+  const resultsDiv = document.getElementById('speSearchResults');
+
+  async function updateSearch(q) {
+    const data = await ensureSPEData();
+    if (!data) return;
+    const filtered = data.experiments.filter(e => e.pairKey.toLowerCase().includes(q.toLowerCase()));
+    resultsDiv.innerHTML = filtered.slice(0, 50).map(e => `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);">
+      ${e.pairKey} <span style="color:${e.spe_rt_d!==null?(e.spe_rt_d>0?'#ff9800':'#2196f3'):'#888'}">${e.spe_rt_d!==null?'d='+e.spe_rt_d.toFixed(3):'N/A'}</span>
+    </div>`).join('');
+    resultsDiv.querySelectorAll('.spe-exp-row').forEach(row => {
+      row.addEventListener('click', () => loadSPEDetail(row.dataset.key));
+    });
+  }
+  searchInput.addEventListener('input', () => updateSearch(searchInput.value));
+  updateSearch('');
+}
+
+async function loadSPEDetail(pairKey) {
+  destroySPECharts();
+  const rp = document.getElementById('speRightCharts');
+  rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:var(--accent);">⏳ 加载实验详情...</div>';
+  try {
+    _speDetailData = await fetchAPI('/api/spe/detail?key=' + encodeURIComponent(pairKey));
+  } catch(e) {
+    rp.innerHTML = '<div style="color:#f44336;">加载失败: '+e.message+'</div>';
+    return;
+  }
+  if (_speDetailData.error) {
+    rp.innerHTML = '<div style="color:#f44336;">'+_speDetailData.error+'</div>';
+    return;
+  }
+  const d = _speDetailData;
+  const subs = d.subjects || [];
+  const ld = document.getElementById('speLeftDetail');
+  ld.innerHTML = `
+    <div style="font-weight:600;color:var(--accent);">${pairKey}</div>
+    <div style="font-size:0.72em;line-height:1.6;color:var(--text-secondary);">
+      <div>被试数: ${d.n_subjects} | 试次: ${d.n_total_trials}</div>
+      <div>整体SPE(RT): <b>${d.overall_spe_rt_d !== null ? d.overall_spe_rt_d.toFixed(3) : 'N/A'}</b></div>
+      <div>Self RT: ${d.overall_self_mean_rt}ms | Stranger RT: ${d.overall_stranger_mean_rt}ms</div>
+      ${d.overall_self_acc !== null ? `<div>Self ACC: ${(d.overall_self_acc*100).toFixed(1)}% | Stranger ACC: ${(d.overall_stranger_acc*100).toFixed(1)}%</div>` : ''}
+      <div>P: ${d.meta.P_parsed_ms||'N/A'} | T: ${d.meta.T_parsed_ms||'N/A'}ms | W: ${d.meta.W_parsed_ms||'N/A'}ms</div>
+    </div>
+    <div style="font-weight:600;margin-top:8px;margin-bottom:4px;">个体 SPE (按效应量排序)</div>
+    <div style="max-height:calc(100vh - 500px);overflow-y:auto;font-size:0.7em;">
+      ${subs.map(s => {
+        const dVal = s.spe_rt_d;
+        const barW = dVal !== null ? Math.min(100, Math.abs(dVal)*80) : 0;
+        const bgColor = dVal !== null ? (dVal > 0 ? '#ff9800' : '#2196f3') : '#888';
+        return `<div style="padding:2px 4px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;">
+          <span style="min-width:28px;">${s.subjectID}</span>
+          <span style="flex:1;height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
+            <span style="display:block;height:100%;width:${barW}%;background:${bgColor};border-radius:3px;"></span>
+          </span>
+          <span style="min-width:42px;text-align:right;color:${bgColor};font-weight:600;">${dVal!==null?dVal.toFixed(3):'N/A'}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+
+  // Right: RT distributions and SPE chart
+  rp.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:280px;height:280px;"><canvas id="speIndivRT"></canvas></div>
+      <div style="flex:1;min-width:280px;height:280px;"><canvas id="speIndivSPE"></canvas></div>
+    </div>
+    <div style="height:280px;"><canvas id="speIndivWaterfall"></canvas></div>
+  `;
+
+  // RT distribution box plot style
+  const selfRTs = subs.flatMap(s => Array(s.n_self).fill(s.self_mean_rt));
+  const strangerRTs = subs.flatMap(s => Array(s.n_stranger).fill(s.stranger_mean_rt));
+  renderSPEDualHist('speIndivRT', subs.map(s=>s.self_mean_rt).filter(v=>v!==null), subs.map(s=>s.stranger_mean_rt).filter(v=>v!==null), 'RT (ms)', '#ff9800', '#2196f3');
+
+  // Per-subject SPE bar chart
+  renderSPESubjectBars('speIndivSPE', subs.filter(s=>s.spe_rt_d!==null));
+
+  // SPE waterfall (cumulative)
+  renderSPEWaterfall('speIndivWaterfall', subs.filter(s=>s.spe_rt_d!==null));
+}
+
+function renderSPEDualHist(canvasId, selfVals, strangerVals, xLabel, colorSelf, colorStranger) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || selfVals.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const allVals = [...selfVals, ...strangerVals];
+  const bins = 15;
+  const binMin = Math.min(...allVals), binMax = Math.max(...allVals);
+  const binW = (binMax - binMin) / bins || 1;
+  const selfCounts = Array(bins).fill(0), strangerCounts = Array(bins).fill(0);
+  selfVals.forEach(v => { const i = Math.min(bins-1, Math.floor((v-binMin)/binW)); selfCounts[i]++; });
+  strangerVals.forEach(v => { const i = Math.min(bins-1, Math.floor((v-binMin)/binW)); strangerCounts[i]++; });
+  const labels = Array.from({length:bins}, (_,i) => (binMin+binW*i).toFixed(0));
+
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Self RT', data: selfCounts, backgroundColor: withAlpha(colorSelf, 0.5), borderColor: colorSelf, borderWidth: 1 },
+        { label: 'Stranger RT', data: strangerCounts, backgroundColor: withAlpha(colorStranger, 0.5), borderColor: colorStranger, borderWidth: 1 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { title: { display: true, text: xLabel + ' 分布', color: appState.theme==='light'?'#2c3e50':'#e0e0e0' } },
+      scales: { x: { title: { display: true, text: xLabel } }, y: { title: { display: true, text: '被试数' } } }
+    }
+  });
+  _speCharts.push(chart);
+}
+
+function renderSPESubjectBars(canvasId, subs) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || subs.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const colors = subs.map(s => s.spe_rt_d > 0 ? '#ff9800' : '#2196f3');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: subs.map(s => s.subjectID),
+      datasets: [{
+        label: 'SPE (RT d)',
+        data: subs.map(s => s.spe_rt_d),
+        backgroundColor: colors.map(c => withAlpha(c, 0.6)),
+        borderColor: colors,
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        title: { display: true, text: '各被试 SPE 效应量', color: appState.theme==='light'?'#2c3e50':'#e0e0e0' },
+        legend: { display: false }
+      },
+      scales: {
+        x: { title: { display: true, text: "Cohen's d" } },
+        y: { ticks: { font: { size: 9 } } }
+      }
+    }
+  });
+  _speCharts.push(chart);
+}
+
+function renderSPEWaterfall(canvasId, subs) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || subs.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const sorted = [...subs].sort((a,b) => b.spe_rt_d - a.spe_rt_d);
+  const labels = sorted.map(s => s.subjectID);
+  const data = sorted.map(s => s.spe_rt_d);
+  const colors = data.map(d => d > 0 ? '#ff9800' : '#2196f3');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'SPE (RT d)',
+        data,
+        backgroundColor: colors.map(c => withAlpha(c, 0.6)),
+        borderColor: colors,
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        title: { display: true, text: 'SPE 瀑布图 (按效应量降序)', color: appState.theme==='light'?'#2c3e50':'#e0e0e0' },
+        legend: { display: false }
+      },
+      scales: {
+        x: { ticks: { font: { size: 8 }, maxRotation: 90 } },
+        y: { title: { display: true, text: "Cohen's d" } }
+      }
+    }
+  });
+  _speCharts.push(chart);
+}
+
+function linearFit(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return null;
+  let sx=0, sy=0, sxx=0, sxy=0;
+  for (let i=0; i<n; i++) { sx+=xs[i]; sy+=ys[i]; sxx+=xs[i]*xs[i]; sxy+=xs[i]*ys[i]; }
+  const denom = n*sxx - sx*sx;
+  if (denom === 0) return null;
+  const slope = (n*sxy - sx*sy) / denom;
+  const intercept = (sy - slope*sx) / n;
+  return { slope, intercept };
+}
+
+function pearsonR(xs, ys) {
+  const n = xs.length;
+  if (n < 3) return 0;
+  let sx=0,sy=0,sxx=0,syy=0,sxy=0;
+  for (let i=0;i<n;i++){sx+=xs[i];sy+=ys[i];sxx+=xs[i]*xs[i];syy+=ys[i]*ys[i];sxy+=xs[i]*ys[i];}
+  const denom = Math.sqrt((n*sxx-sx*sx)*(n*syy-sy*sy));
+  return denom===0 ? 0 : (n*sxy - sx*sy)/denom;
 }
 
 init();
