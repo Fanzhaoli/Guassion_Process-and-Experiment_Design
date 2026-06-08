@@ -2237,6 +2237,7 @@ async function renderVisualizationTab(lp, rp) {
       <select id="crfYMetricSelect" style="width:100%;font-size:0.9em;padding:4px 8px;">
         <option value="matchProp" selected>P(Match Key) — 匹配键比例</option>
         <option value="acc">ACC — 准确率 (正确反应比例)</option>
+        <option value="dprime">d' — 信号检测论辨别力指数</option>
       </select>
       <div id="crfACCModeGroup" style="margin-top:6px;display:none;">
         <div style="font-weight:600;color:var(--accent);margin-bottom:3px;">ACC 计算模式</div>
@@ -2273,11 +2274,14 @@ async function renderVisualizationTab(lp, rp) {
       <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">▎累积反应函数 (CRF) 可视化</div>
       <div><b>图表类型:</b> 分位数分箱的CRF散点图 + 二次多项式趋势线</div>
       <div><b>横轴:</b> 每个RT分位数箱的均值反应时间（秒）</div>
-      <div><b>纵轴:</b> 被试选择"匹配键"的比例 P(Match) ∈ [0,1]</div>
+      <div style="margin-top:4px;"><b>Y轴指标:</b></div>
+      <div>• <b>d'</b> — 信号检测论辨别力指数 (d-prime)：基于命中率(Hit)和虚报率(FA)计算，d' = z(Hit) - z(FA)，反映被试区分匹配与非匹配刺激的敏感性</div>
+      <div>• <b>P(Match Key)</b> — 匹配键比例：被试选择"匹配键"的比例，取值范围 [0,1]</div>
+      <div>• <b>ACC</b> — 准确率(正确反应比例)：在对应时间窗内正确反应的比例</div>
       <div style="margin-top:4px;"><b>数据系列:</b></div>
       <div>🟠 <b>Self</b> — 自我标签试次 | 🔵 <b>Stranger</b> — 生人标签试次</div>
+      <div>🟢 <b>Matching</b> — 匹配条件 | 🔴 <b>NonMatching</b> — 非匹配条件</div>
       <div style="margin-top:4px;"><b>视觉元素:</b></div>
-      <div>• 彩色半透明竖条 = 各分位箱的RT密度分布背景</div>
       <div>• 虚线趋势线 = 二次多项式拟合曲线</div>
       <div>• 阴影带 = 95%置信区间 (SEM × 1.96)</div>
       <div>• 竖线误差棒 = 每个bin的±1.96 SEM范围</div>
@@ -2470,6 +2474,7 @@ function initCRFYAxisControls() {
     } else {
       accGroup.style.display = 'none';
     }
+    _crfOvData = null;  // Force overview reload for d' mode
     updateAllCRFViews();
   });
   // Init ACC radio listeners
@@ -2700,6 +2705,71 @@ function computeCRF(trials, nQuantiles, logRT = false) {
   return { bins, overallACC, nTotal: n, nCorrect: globalNCorrect };
 }
 
+// ===== 信号检测论 d' (辨别力指数) CRF 计算 =====
+// 对每个分箱计算 Hit Rate (P(ResponseIsMatch | Matching)) 和 FA Rate (P(ResponseIsMatch | NonMatching))
+// d' = z(HR) - z(FAR), 使用 log-linear 校正避免极端值
+function zScore(p) {
+  // 近似正态分位数 (Abramowitz & Stegun 26.2.23)
+  if (p <= 0 || p >= 1) return p <= 0 ? -5 : 5;
+  const a1 = -39.6968302866538, a2 = 220.9460984245205, a3 = -275.9285104469687;
+  const a4 = 138.3577518672690, a5 = -30.66479806614716, a6 = 2.506628277459239;
+  const b1 = -54.47609879822406, b2 = 161.5858368580409, b3 = -155.6989798598866;
+  const b4 = 66.80131188771972, b5 = -13.28068155288572;
+  const c1 = -7.784894002430293e-3, c2 = -0.3223964580411365, c3 = -2.400758277161838;
+  const c4 = -2.549732539343734, c5 = 4.374664141464968, c6 = 2.938163982698783;
+  const d1 = 7.784695709041462e-3, d2 = 0.3224671290700398, d3 = 2.445134137142996;
+  const d4 = 3.754408661907416;
+  const p_low = 0.02425, p_high = 1 - p_low;
+  let q, r;
+  if (p < p_low) {
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c1 * q + c2) * q + c3) * q + c4) * q + c5) * q + c6) / ((((d1 * q + d2) * q + d3) * q + d4) * q + 1);
+  } else if (p <= p_high) {
+    q = p - 0.5;
+    r = q * q;
+    return (((((a1 * r + a2) * r + a3) * r + a4) * r + a5) * r + a6) * q / (((((b1 * r + b2) * r + b3) * r + b4) * r + b5) * r + 1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c1 * q + c2) * q + c3) * q + c4) * q + c5) * q + c6) / ((((d1 * q + d2) * q + d3) * q + d4) * q + 1);
+  }
+}
+
+function computeCRF_dprime(trials, nQuantiles, logRT = false) {
+  if (trials.length < nQuantiles * 4) return null; // Need both Matching and NonMatching per bin
+  const getRT = logRT ? (t) => Math.log(Math.max(0.001, t.RT || 0.001)) : (t) => t.RT;
+  const sorted = [...trials].sort((a, b) => getRT(a) - getRT(b));
+  const n = sorted.length;
+  const qSize = Math.floor(n / nQuantiles);
+  const bins = [];
+  let start = 0;
+  for (let i = 0; i < nQuantiles; i++) {
+    const end = i === nQuantiles - 1 ? n : start + qSize;
+    let lnSum = 0, nMatchStim = 0, nNonmatchStim = 0;
+    let hitCount = 0, faCount = 0;
+    for (let j = start; j < end; j++) {
+      const v = getRT(sorted[j]);
+      lnSum += v;
+      const isMatchCond = sorted[j].Condition === 'Matching';
+      if (isMatchCond) {
+        nMatchStim++;
+        if (sorted[j].ResponseIsMatch) hitCount++;
+      } else {
+        nNonmatchStim++;
+        if (sorted[j].ResponseIsMatch) faCount++;
+      }
+    }
+    const count = end - start;
+    const rtMean = lnSum / count;
+    // Log-linear correction: add 0.5 to both numerator and denominator
+    const hr = nMatchStim > 0 ? (hitCount + 0.5) / (nMatchStim + 1) : 0.5;
+    const far = nNonmatchStim > 0 ? (faCount + 0.5) / (nNonmatchStim + 1) : 0.5;
+    const dprime = zScore(hr) - zScore(far);
+    bins.push({ rtMean, dprime, hr, far, nMatch: nMatchStim, nNonmatch: nNonmatchStim, n: count });
+    start = end;
+  }
+  return { bins, nTotal: n };
+}
+
 // === 图表实例 ===
 let crfChartInst = null;
 let speChartInst = null;
@@ -2733,8 +2803,12 @@ function updateCRFChart() {
 
     const crfSelfResult = computeCRF(selfTrials, nQ, _crfRTLog);
     const crfStrangerResult = computeCRF(strangerTrials, nQ, _crfRTLog);
-    const crfSelf = crfSelfResult ? crfSelfResult.bins : null;
-    const crfStranger = crfStrangerResult ? crfStrangerResult.bins : null;
+    // d' mode: use separate d' computation
+    const isDprime = _crfYMetric === 'dprime';
+    const dprimeSelfResult = isDprime ? computeCRF_dprime(selfTrials, nQ, _crfRTLog) : null;
+    const dprimeStrangerResult = isDprime ? computeCRF_dprime(strangerTrials, nQ, _crfRTLog) : null;
+    const crfSelf = isDprime ? (dprimeSelfResult ? dprimeSelfResult.bins : null) : (crfSelfResult ? crfSelfResult.bins : null);
+    const crfStranger = isDprime ? (dprimeStrangerResult ? dprimeStrangerResult.bins : null) : (crfStrangerResult ? crfStrangerResult.bins : null);
     _crfCache.overallACCSelf = crfSelfResult ? crfSelfResult.overallACC : 0;
     _crfCache.overallACCStranger = crfStrangerResult ? crfStrangerResult.overallACC : 0;
     _crfCache.nTotalSelf = crfSelfResult ? crfSelfResult.nTotal : 0;
@@ -2745,7 +2819,7 @@ function updateCRFChart() {
     const useOverallACC = isACC && _crfACCMode === 'overall';
     const useBinACC = isACC && _crfACCMode === 'bin';
     const useBinIndex = _crfXAxisMode === 'binIndex';
-    const yLabel = isACC ? (useOverallACC ? 'ACC (整体准确率)' : 'ACC (区间准确率)') : '匹配键选择比例 (P_Match_Response)';
+    const yLabel = isDprime ? "d' (辨别力指数)" : (isACC ? (useOverallACC ? 'ACC (整体准确率)' : 'ACC (区间准确率)') : '匹配键选择比例 (P_Match_Response)');
     const xLabel = useBinIndex ? '分箱序号 (Bin Index)' : (_crfRTLog ? 'ln(RT)' : 'RT (秒)');
     titleEl.textContent = `(n=${trials.length}, Self=${selfTrials.length}, Stranger=${strangerTrials.length}, Q=${nQ})`;
 
@@ -2756,11 +2830,13 @@ function updateCRFChart() {
     const legendColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
 
     const getYVal = (b, overallACC) => {
+      if (isDprime) return b.dprime;
       if (useBinACC) return b.binACC;
       if (useOverallACC) return overallACC;
       return b.upperProp;
     };
     const getYSEM = (b) => {
+      if (isDprime) return 0;  // d' SEM not computed per-bin
       if (useBinACC) return b.binACCSem;
       if (useOverallACC) return 0;
       return b.sem;
@@ -2859,6 +2935,7 @@ function updateCRFChart() {
     const ciBandPlugin = {
       id: 'crfCIBands',
       beforeDatasetsDraw(chart) {
+        if (isDprime) return;  // No CI bands for d' mode
         const { ctx, chartArea, scales: { x, y } } = chart;
         const { left, top, right, bottom } = chartArea;
         ctx.save();
@@ -2917,13 +2994,14 @@ function updateCRFChart() {
       }
     };
 
-    const yMax = isACC ? 1.0 : 1.0;
-    const yMin = isACC ? 0 : 0;
-    const yStep = isACC ? 0.1 : 0.1;
+    const yMax = isDprime ? undefined : 1.0;
+    const yMin = isDprime ? undefined : 0;
+    const yStep = isDprime ? undefined : 0.1;
 
     const baselinePlugin = {
       id: 'baseline05',
       afterDraw(chart) {
+        if (isDprime) return;  // No baseline for d' mode
         const { ctx, chartArea: { left, right }, scales: { y } } = chart;
         const refVal = isACC ? 0.5 : 0.5;
         const yRef = y.getPixelForValue(refVal);
@@ -2959,9 +3037,9 @@ function updateCRFChart() {
                   const d = ctx.dataset;
                   if (d.label.includes('trend') || d.label.includes('ref')) return '';
                   if (useBinIndex) {
-                    return `${d.label}: Bin=${ctx.parsed.x.toFixed(0)}, ${isACC ? 'ACC' : 'P(Match)'}=${(ctx.parsed.y*100).toFixed(1)}%`;
+                    return d.label + ': Bin=' + ctx.parsed.x.toFixed(0) + ', ' + (isDprime ? "d'="+ctx.parsed.y.toFixed(3) : (isACC ? 'ACC='+(ctx.parsed.y*100).toFixed(1)+'%' : 'P(Match)='+(ctx.parsed.y*100).toFixed(1)+'%'));
                   }
-                  return `${d.label}: ${_crfRTLog ? 'ln(RT)' : 'RT'}=${ctx.parsed.x.toFixed(2)}${_crfRTLog ? '' : 's'}, ${isACC ? 'ACC' : 'P(Match)'}=${(ctx.parsed.y*100).toFixed(1)}%`;
+                  return d.label + ': ' + (_crfRTLog ? 'ln(RT)' : 'RT') + '=' + ctx.parsed.x.toFixed(2) + (_crfRTLog ? '' : 's') + ', ' + (isDprime ? "d'="+ctx.parsed.y.toFixed(3) : (isACC ? 'ACC='+(ctx.parsed.y*100).toFixed(1)+'%' : 'P(Match)='+(ctx.parsed.y*100).toFixed(1)+'%'));
                 }
               }
             }
@@ -3015,11 +3093,15 @@ function updateSPEChart(crfSelf, crfStranger) {
   const speData = [];
   const speSems = [];
   const minLen = Math.min(crfSelf.length, crfStranger.length);
+  const isDprimeSPE = _crfYMetric === 'dprime';
   for (let i = 0; i < minLen; i++) {
     const rtX = useBinIndex ? (i + 1) : (crfSelf[i].rtMean + crfStranger[i].rtMean) / 2;
     let speY;
     let sem;
-    if (useOverallACC) {
+    if (isDprimeSPE) {
+      speY = crfSelf[i].dprime - crfStranger[i].dprime;
+      sem = 0;
+    } else if (useOverallACC) {
       speY = overallACCSelf - overallACCStranger;
       sem = 0;
     } else if (isACC) {
@@ -3033,7 +3115,7 @@ function updateSPEChart(crfSelf, crfStranger) {
     speSems.push(sem);
   }
 
-  const speLabel = isACC ? 'SPE = ACC_Self - ACC_Stranger' : 'SPE = P_Self - P_Stranger';
+  const speLabel = isDprimeSPE ? "SPE = d'_Self − d'_Stranger" : (isACC ? 'SPE = ACC_Self - ACC_Stranger' : 'SPE = P_Self - P_Stranger');
   const xLabelSPE = useBinIndex ? '分箱序号 (Bin Index)' : (_crfRTLog ? 'ln(RT)' : 'RT均值 (秒)');
 
   const speXs = speData.map(d => d.x);
@@ -3136,8 +3218,10 @@ function updateSPEChart(crfSelf, crfStranger) {
               label: ctx => {
                 const d = ctx.dataset;
                 if (d.label.includes('trend')) return '';
-                const metricName = isACC ? 'ΔACC' : 'ΔP(Match)';
-                return `SPE: ${useBinIndex ? 'Bin='+ctx.parsed.x.toFixed(0) : (_crfRTLog ? 'ln(RT)=' : 'RT=')+ctx.parsed.x.toFixed(2)+(_crfRTLog ? '' : 's')}, ${metricName}=${(ctx.parsed.y*100).toFixed(1)}%`;
+                const metricName = isDprimeSPE ? "Δd'" : (isACC ? 'ΔACC' : 'ΔP(Match)');
+                const rtx = useBinIndex ? ('Bin='+ctx.parsed.x.toFixed(0)) : ((_crfRTLog ? 'ln(RT)=' : 'RT=')+ctx.parsed.x.toFixed(2)+(_crfRTLog ? '' : 's'));
+                const metVal = isDprimeSPE ? (metricName+'='+ctx.parsed.y.toFixed(3)) : (metricName+'='+(ctx.parsed.y*100).toFixed(1)+'%');
+                return 'SPE: ' + rtx + ', ' + metVal;
               }
             }
           }
@@ -3623,23 +3707,27 @@ async function loadCRFOverviewData() {
     }
     const condLabel = _crfOvCondition === 'all' ? '全部条件' : _crfOvCondition;
     const aggByGroup = {};
+    const isDprimeOv = _crfYMetric === 'dprime';
+    const cf = isDprimeOv ? computeCRF_dprime : ((t, q, l) => computeCRF(t, q, l));
     // Compute group-level CRFs
     for (let gid = 1; gid <= 8; gid++) {
       const gTrials = formal.filter(t => t.groupID === gid);
       const selfT = gTrials.filter(t => t.Identity === 'Self');
       const strangerT = gTrials.filter(t => t.Identity === 'Stranger');
-      const selfCRFRes = computeCRF(selfT, _crfOvQ, _crfRTLog);
-      const strangerCRFRes = computeCRF(strangerT, _crfOvQ, _crfRTLog);
+      const selfCRFRes = cf(selfT, _crfOvQ, _crfRTLog);
+      const strangerCRFRes = cf(strangerT, _crfOvQ, _crfRTLog);
       aggByGroup[gid] = {
         selfCRF: selfCRFRes ? selfCRFRes.bins : null,
         strangerCRF: strangerCRFRes ? strangerCRFRes.bins : null,
-        selfOverallACC: selfCRFRes ? selfCRFRes.overallACC : 0,
-        strangerOverallACC: strangerCRFRes ? strangerCRFRes.overallACC : 0,
+        selfOverallACC: (!isDprimeOv && selfCRFRes) ? selfCRFRes.overallACC : 0,
+        strangerOverallACC: (!isDprimeOv && strangerCRFRes) ? strangerCRFRes.overallACC : 0,
       };
     }
-    // Compute per-subject CRFs
+    // Compute per-subject CRFs (skip for d' mode - too few trials per subject)
     const subjMap = {};
-    const subjIds = [...new Set(formal.map(t => `${t.groupID}_${t.subjectID}`))];
+    let subjIds = [];
+    if (!isDprimeOv) {
+    subjIds = [...new Set(formal.map(t => `${t.groupID}_${t.subjectID}`))];
     subjIds.forEach(key => {
       const [gid, sid] = key.split('_').map(Number);
       const sTrials = formal.filter(t => t.groupID === gid && t.subjectID === sid);
@@ -3658,9 +3746,11 @@ async function loadCRFOverviewData() {
         });
       }
     });
+    }
 
-    _crfOvData = { aggByGroup, subjMap, nSubj: subjIds.length };
-    // Compute 4-condition split (Self/Stranger × Matching/NonMatching)
+    _crfOvData = { aggByGroup, subjMap, nSubj: subjIds.length, isDprime: isDprimeOv };
+    // Compute 4-condition split (skip for d' mode)
+    if (!isDprimeOv) {
     const splitByGroup = {};
     for (let gid = 1; gid <= 8; gid++) {
       const gTrials = formal.filter(t => t.groupID === gid);
@@ -3684,8 +3774,9 @@ async function loadCRFOverviewData() {
       };
     }
     _crfOvData.splitByGroup = splitByGroup;
+    }  // end if (!isDprimeOv) for split
     document.getElementById('crfOverviewInfo').textContent =
-      `已加载 ${Object.values(subjMap).reduce((s,a)=>s+a.length,0)} 被试 | ` +
+      `已加载 ${isDprimeOv ? '—' : Object.values(subjMap).reduce((s,a)=>s+a.length,0)+' 被试'} | ` +
       `8组 × Self/Stranger | Q=${_crfOvQ} | ${condLabel}`;
     _crfOvVisible = new Set([1,2,3,4,5,6,7,8]);
     renderCRFOverview();
@@ -3728,6 +3819,7 @@ function renderCRFOverview() {
   const gridC = appState.theme === 'light' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.06)';
   const axisC = appState.theme === 'light' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)';
 
+  const isDprimeOv = _crfOvData.isDprime || false;
   const isACC = _crfYMetric === 'acc';
   const useOverallACC = isACC && _crfACCMode === 'overall';
   const useBinIndexOv = _crfXAxisMode === 'binIndex';
@@ -3735,13 +3827,14 @@ function renderCRFOverview() {
   const showStranger = _crfOvShowStranger;
 
   const getOvY = (b, overallACC) => {
+    if (isDprimeOv) return b.dprime;
     if (useOverallACC) return overallACC;
     if (isACC) return b.binACC;
     return b.upperProp;
   };
   const getOvX = (b, idx) => useBinIndexOv ? (idx + 1) : b.rtMean;
 
-  const yTitle = isACC ? (useOverallACC ? 'ACC (overall)' : 'ACC (bin)') : 'P(Match Key)';
+  const yTitle = isDprimeOv ? "d' (辨别力指数)" : (isACC ? (useOverallACC ? 'ACC (overall)' : 'ACC (bin)') : 'P(Match Key)');
   const xTitleOv = useBinIndexOv ? 'Bin Index' : (_crfRTLog ? 'ln(RT)' : 'RT bin mean (s)');
 
   // Plot area background
@@ -3753,20 +3846,37 @@ function renderCRFOverview() {
   ctx.strokeRect(margin.l, margin.t, pw, ph);
 
   // Horizontal grid lines
+  let yMin = 0, yMax = 1, yStep = 0.25;
+  if (isDprimeOv) {
+    // Auto-compute d' range from data
+    let dMin = Infinity, dMax = -Infinity;
+    for (let gid = 1; gid <= 8; gid++) {
+      if (!_crfOvVisible.has(gid)) continue;
+      const gd = _crfOvData.aggByGroup[gid];
+      [gd.selfCRF, gd.strangerCRF].forEach(crf => {
+        if (!crf) return;
+        crf.forEach(b => { const v = b.dprime; if (isFinite(v)) { dMin = Math.min(dMin, v); dMax = Math.max(dMax, v); } });
+      });
+    }
+    if (!isFinite(dMin)) { dMin = 0; dMax = 4; }
+    const pad = Math.max(0.2, (dMax - dMin) * 0.1);
+    yMin = Math.floor((dMin - pad) * 2) / 2;
+    yMax = Math.ceil((dMax + pad) * 2) / 2;
+    yStep = Math.max(0.5, Math.round((yMax - yMin) / 6 * 2) / 2);
+  }
+  const yRange = yMax - yMin || 1;
   ctx.strokeStyle = gridC; ctx.lineWidth = 0.6;
-  for (let p = 0; p <= 1; p += 0.25) {
-    const py = margin.t + ph * (1 - p);
+  for (let yv = yMin; yv <= yMax + 0.001; yv += yStep) {
+    const py = margin.t + ph * (1 - (yv - yMin) / yRange);
     ctx.beginPath(); ctx.moveTo(margin.l, py); ctx.lineTo(margin.l + pw, py); ctx.stroke();
   }
-  ctx.strokeStyle = appState.theme === 'light' ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.1)';
-  ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(margin.l, margin.t + ph/2); ctx.lineTo(margin.l + pw, margin.t + ph/2); ctx.stroke();
 
   // Y-axis labels
   ctx.fillStyle = txtC; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'right';
-  for (let p = 0; p <= 1; p += 0.25) {
-    const py = margin.t + ph * (1 - p);
-    ctx.fillText(p.toFixed(2), margin.l - 6, py + 4);
+  for (let yv = yMin; yv <= yMax + 0.001; yv += yStep) {
+    const py = margin.t + ph * (1 - (yv - yMin) / yRange);
+    const label = isDprimeOv ? yv.toFixed(1) : yv.toFixed(2);
+    ctx.fillText(label, margin.l - 6, py + 4);
   }
 
   // Y-axis title
@@ -3812,7 +3922,7 @@ function renderCRFOverview() {
   }
 
   const xToPx = (x) => margin.l + ((x - xRange[0]) / (xRange[1] - xRange[0])) * pw;
-  const yToPx = (y) => margin.t + ph * (1 - Math.max(0, Math.min(1, y)));
+  const yToPx = (y) => margin.t + ph * (1 - Math.max(0, Math.min(1, (y - yMin) / yRange)));
 
   // X-axis tick labels
   ctx.fillStyle = txtC; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
@@ -4083,6 +4193,7 @@ async function renderDesignTab(lp, rp) {
     <div class="section-title" style="margin-top:12px;">设计空间导航</div>
     <button id="btnLoadDesignData" style="width:100%;margin-bottom:6px;">加载所有数据进行分析</button>
     <div id="designDataInfo" style="font-size:0.75em;color:var(--text-secondary);margin-bottom:6px;"></div>
+    <div id="designSpeInfo" style="font-size:0.72em;background:var(--bg-card);padding:8px;border-radius:4px;margin-bottom:6px;border:1px solid var(--border);display:none;"></div>
 
     <div class="section-title">质量筛选 (ggcube 前景/背景风格)</div>
     <div class="filter-row">
@@ -4183,6 +4294,32 @@ async function renderDesignTab(lp, rp) {
       </div>
     </div>
     <div class="chart-container design-row-single">
+      <div class="section-title">SPE 自我优势效应 — 参数影响分析</div>
+      <div class="design-trend-row">
+        <div style="flex:1;"><canvas id="designSpePChart"></canvas></div>
+        <div style="flex:1;"><canvas id="designSpeTChart"></canvas></div>
+        <div style="flex:1;"><canvas id="designSpeWChart"></canvas></div>
+      </div>
+      <div style="font-size:0.68em;color:var(--text-secondary);margin-top:3px;">
+        SPE = Cohen's d (Stranger RT − Self RT) | 正值 = Self 更快 (经典SPE方向) | 虚线 = 零效应线
+      </div>
+    </div>
+    <div class="chart-container design-row-single">
+      <div class="section-title">参数交互 — P×T / T×W / P×W 对 SPE 的影响 (热力图)</div>
+      <div style="display:flex;gap:8px;min-height:200px;">
+        <div style="flex:1;"><canvas id="designHeatPT"></canvas></div>
+        <div style="flex:1;"><canvas id="designHeatTW"></canvas></div>
+        <div style="flex:1;"><canvas id="designHeatPW"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-container design-row-single">
+      <div class="section-title">参数-SPE 相关系数与统计摘要</div>
+      <div style="display:flex;gap:8px;min-height:200px;">
+        <div style="flex:2;" id="designSpeCorrTable"></div>
+        <div style="flex:3;"><canvas id="designSpeBarChart"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-container design-row-single">
       <div class="section-title">参数-质量趋势面板 (P, T, W vs 正确率)</div>
       <div class="design-trend-row">
         <div style="flex:1;"><canvas id="designPVizChart"></canvas></div>
@@ -4234,6 +4371,8 @@ async function renderDesignTab(lp, rp) {
     document.getElementById('designDataInfo').textContent =
       `已加载 ${s.summary.length} 文件, ${s.trials.length} 试次 | 覆盖 ${new Set(s.summary.map(x=>x.groupID)).size} 组`;
     updateDesignCharts();
+    // Refresh SPE stats in left panel
+    renderSpeLeftPanel();
   });
 
   document.getElementById('btnCompareGroups').addEventListener('click', () => {
@@ -4283,6 +4422,67 @@ function getDesignGroupSummary() {
   }));
 }
 
+// ===== SPE by Group: 计算各组 Self vs Stranger 效应量 =====
+function computeSpeByGroup() {
+  if (!appState.allData || !appState.allData.trials) return [];
+  const formal = appState.allData.trials.filter(t => t.RT !== null && t.stage === 'formal');
+  const results = [];
+  for (let gid = 1; gid <= 8; gid++) {
+    const gTrials = formal.filter(t => t.groupID === gid);
+    const selfR = gTrials.filter(t => t.Identity === 'Self').map(t => t.RT);
+    const strangerR = gTrials.filter(t => t.Identity === 'Stranger').map(t => t.RT);
+    const selfAcc = gTrials.filter(t => t.Identity === 'Self' && t.Correct === 1).length;
+    const selfTotal = gTrials.filter(t => t.Identity === 'Self').length;
+    const strangerAcc = gTrials.filter(t => t.Identity === 'Stranger' && t.Correct === 1).length;
+    const strangerTotal = gTrials.filter(t => t.Identity === 'Stranger').length;
+    const selfMatch = gTrials.filter(t => t.Identity === 'Self' && t.ResponseIsMatch).length;
+    const strangerMatch = gTrials.filter(t => t.Identity === 'Stranger' && t.ResponseIsMatch).length;
+
+    // Cohen's d for RT: Stranger − Self, 正值=Self更快 (经典SPE方向)
+    const dRT = cohensD(strangerR, selfR);
+    // Cohen's d for ACC: Self − Stranger, 正值=Self更准确
+    const dACC = cohensDProportion(
+      selfAcc / Math.max(1, selfTotal), selfTotal,
+      strangerAcc / Math.max(1, strangerTotal), strangerTotal
+    );
+    // P(Match) difference
+    const pMatchDiff = (selfMatch / Math.max(1, selfTotal)) - (strangerMatch / Math.max(1, strangerTotal));
+
+    results.push({
+      groupID: gid,
+      nSelf: selfTotal, nStranger: strangerTotal,
+      selfMeanRT: selfR.length > 0 ? selfR.reduce((a,b)=>a+b,0)/selfR.length : 0,
+      strangerMeanRT: strangerR.length > 0 ? strangerR.reduce((a,b)=>a+b,0)/strangerR.length : 0,
+      speRTd: dRT,
+      speACCd: dACC,
+      spePMatch: pMatchDiff,
+      selfACC: selfTotal > 0 ? selfAcc / selfTotal : 0,
+      strangerACC: strangerTotal > 0 ? strangerAcc / strangerTotal : 0,
+      selfPMatch: selfTotal > 0 ? selfMatch / selfTotal : 0,
+      strangerPMatch: strangerTotal > 0 ? strangerMatch / strangerTotal : 0,
+    });
+  }
+  return results;
+}
+
+function cohensD(a, b) {
+  if (a.length < 2 || b.length < 2) return null;
+  const ma = a.reduce((s,v)=>s+v,0)/a.length;
+  const mb = b.reduce((s,v)=>s+v,0)/b.length;
+  const va = a.reduce((s,v)=>s+(v-ma)**2,0)/(a.length-1);
+  const vb = b.reduce((s,v)=>s+(v-mb)**2,0)/(b.length-1);
+  const sp = Math.sqrt(((a.length-1)*va + (b.length-1)*vb) / (a.length+b.length-2));
+  if (sp === 0) return 0;
+  return (ma - mb) / sp;
+}
+
+function cohensDProportion(p1, n1, p2, n2) {
+  if (n1 < 2 || n2 < 2) return null;
+  const sp = Math.sqrt(p1*(1-p1)/n1 + p2*(1-p2)/n2);
+  if (sp === 0) return 0;
+  return (p1 - p2) / sp;
+}
+
 function getFilteredDesignGroups() {
   const summary = getDesignGroupSummary();
   const showGood = document.getElementById('designQualityGood')?.checked ?? true;
@@ -4300,6 +4500,16 @@ function updateDesignCharts() {
   if (!appState.allData) return;
   const groups = getFilteredDesignGroups();
   const allGroups = getDesignGroupSummary();
+  const speData = computeSpeByGroup();
+  const designMap = {1:{P:0,T:30,W:300},2:{P:0,T:30,W:600},3:{P:120,T:30,W:600},4:{P:120,T:80,W:600},
+    5:{P:8,T:100,W:1100},6:{P:120,T:500,W:1500},7:{P:0,T:100,W:1100},8:{P:120,T:30,W:800}};
+  const qualityMap = {1:'exclude',2:'exclude',3:'caution',4:'good',5:'good',6:'good',7:'good',8:'good'};
+
+  // Merge SPE with design params
+  const speMerged = speData.map(s => ({
+    ...s, P: designMap[s.groupID]?.P, T: designMap[s.groupID]?.T, W: designMap[s.groupID]?.W,
+    quality: qualityMap[s.groupID],
+  }));
 
   const d3dCanvas = document.getElementById('design3DCanvas');
   if (d3dCanvas) {
@@ -4315,6 +4525,11 @@ function updateDesignCharts() {
   renderDesignTrendPanels(allGroups);
   renderDesignQualityChart(groups);
   renderDesignSensitivityChart(groups);
+  // NEW: SPE analysis panels
+  renderSpeParamCharts(speMerged);
+  renderSpeHeatmaps(speMerged);
+  renderSpeCorrTable(speMerged);
+  renderSpeBarChart(speMerged);
   if (!d3dCanvas) render3DDesignSpace();
 }
 
@@ -4670,6 +4885,288 @@ function renderDesignSensitivityChart(groups) {
 // ===== 多组比较图表 =====
 let designCompareRTInst = null;
 let designCompareMetricInst = null;
+
+// ===== SPE Parameter Charts: P/T/W vs SPE scatter =====
+let designSpePInst = null, designSpeTInst = null, designSpeWInst = null;
+function renderSpeParamCharts(speMerged) {
+  const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const valid = speMerged.filter(s => s.speRTd !== null && s.nSelf >= 5 && s.nStranger >= 5);
+
+  const renderOne = (canvasId, paramKey, xLabel, color, instRef) => {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (instRef) instRef.destroy();
+    const ctx = canvas.getContext('2d');
+    const points = valid.map(s => ({x: s[paramKey], y: s.speRTd, label: 'G'+s.groupID}));
+    if (points.length < 2) return;
+    const xs = points.map(p=>p.x), ys = points.map(p=>p.y);
+    const fit = linearFit(xs, ys);
+    const datasets = [{
+      label: 'SPE (RT d)',
+      data: points,
+      backgroundColor: withAlpha(color, 0.65),
+      borderColor: color,
+      pointRadius: 7, pointHoverRadius: 10,
+    }];
+    if (fit) {
+      const xMin = Math.min(...xs), xMax = Math.max(...xs);
+      datasets.push({
+        label: '趋势', data: [{x:xMin,y:fit.slope*xMin+fit.intercept},{x:xMax,y:fit.slope*xMax+fit.intercept}],
+        borderColor: withAlpha('#f44336', 0.5), backgroundColor: 'transparent',
+        pointRadius: 0, borderWidth: 1.5, borderDash: [5,3], showLine: true,
+      });
+    }
+    const inst = new Chart(ctx, {
+      type: 'scatter', data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, showLine: true,
+        plugins: {
+          legend: { labels: { color: textColor, filter: item => !item.text.includes('趋势') } },
+          title: { display: true, text: xLabel + ' vs SPE', color: textColor, font: { size: 11 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                if (ctx.dataset.label.includes('趋势')) return '';
+                return `${points[ctx.dataIndex].label}: ${xLabel}=${ctx.parsed.x}, d=${ctx.parsed.y.toFixed(3)}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { title: { display: true, text: xLabel, color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+          y: { title: { display: true, text: "Cohen's d (RT)", color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+        }
+      }
+    });
+    instRef = inst;
+  };
+
+  renderOne('designSpePChart', 'P', 'P (练习试次)', '#e91e63', designSpePInst);
+  renderOne('designSpeTChart', 'T', 'T (刺激时长 ms)', '#ff9800', designSpeTInst);
+  renderOne('designSpeWChart', 'W', 'W (反应窗口 ms)', '#2196f3', designSpeWInst);
+}
+
+// ===== SPE Heatmaps: P×T, T×W, P×W interaction =====
+let designHeatPTInst = null, designHeatTWInst = null, designHeatPWInst = null;
+function renderSpeHeatmaps(speMerged) {
+  const valid = speMerged.filter(s => s.speRTd !== null);
+  if (valid.length < 3) return;
+
+  const renderHeat = (canvasId, xKey, yKey, xLabel, yLabel, instRef) => {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (instRef) instRef.destroy();
+    const ctx = canvas.getContext('2d');
+    const points = valid.map(s => ({x: s[xKey], y: s[yKey], v: s.speRTd, label: 'G'+s.groupID}));
+    const sizes = points.map(p => Math.max(8, Math.abs(p.v) * 120 + 6));
+    const colors = points.map(p => p.v > 0 ? withAlpha('#ff9800', 0.7) : withAlpha('#2196f3', 0.7));
+
+    const inst = new Chart(ctx, {
+      type: 'bubble',
+      data: { datasets: [{
+        label: 'SPE',
+        data: points.map((p,i) => ({x: p.x, y: p.y, r: sizes[i]})),
+        backgroundColor: colors,
+        borderColor: points.map(p => p.v > 0 ? '#e65100' : '#0d47a1'),
+        borderWidth: 1.5,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: xLabel + '×' + yLabel, font: {size:10}, color: appState.theme==='light'?'#2c3e50':'#e0e0e0' },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const p = points[ctx.dataIndex];
+                return [`${p.label}: ${xLabel}=${p.x}, ${yLabel}=${p.y}`, `SPE d=${p.v.toFixed(3)}`];
+              }
+            }
+          }
+        },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: xLabel } },
+          y: { type: 'linear', title: { display: true, text: yLabel } },
+        }
+      }
+    });
+    instRef = inst;
+  };
+
+  renderHeat('designHeatPT', 'P', 'T', 'P (练习)', 'T (ms)', designHeatPTInst);
+  renderHeat('designHeatTW', 'T', 'W', 'T (ms)', 'W (ms)', designHeatTWInst);
+  renderHeat('designHeatPW', 'P', 'W', 'P (练习)', 'W (ms)', designHeatPWInst);
+}
+
+// ===== SPE Correlation Table =====
+function renderSpeCorrTable(speMerged) {
+  const el = document.getElementById('designSpeCorrTable');
+  if (!el) return;
+  const valid = speMerged.filter(s => s.speRTd !== null);
+  if (valid.length < 3) { el.innerHTML = '<div style="color:var(--text-secondary);">数据不足</div>'; return; }
+
+  const computeCorr = (key) => {
+    const xs = valid.map(s => s[key]);
+    const ys = valid.map(s => s.speRTd);
+    const r = pearsonR(xs, ys);
+    const pVal = pValueFromR(r, xs.length);
+    return { r, pVal };
+  };
+  const pCorr = computeCorr('P'), tCorr = computeCorr('T'), wCorr = computeCorr('W');
+
+  const qualityMap = {1:'exclude',2:'exclude',3:'caution',4:'good',5:'good',6:'good',7:'good',8:'good'};
+  const goodData = valid.filter(s => qualityMap[s.groupID] !== 'exclude');
+  const goodCorr = goodData.length >= 3 ? {
+    P: pearsonR(goodData.map(s=>s.P), goodData.map(s=>s.speRTd)),
+    T: pearsonR(goodData.map(s=>s.T), goodData.map(s=>s.speRTd)),
+    W: pearsonR(goodData.map(s=>s.W), goodData.map(s=>s.speRTd)),
+  } : null;
+
+  const formatR = (r) => (r !== undefined && r !== null) ? r.toFixed(3) : 'N/A';
+  const sigStr = (p) => p < 0.001 ? '***' : p < 0.01 ? '**' : p < 0.05 ? '*' : p < 0.1 ? '~' : 'n.s.';
+
+  el.innerHTML = `
+    <div style="font-size:0.72em;line-height:1.7;background:var(--bg-card);padding:8px;border-radius:4px;height:100%;overflow-y:auto;">
+      <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">Pearson 相关系数</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="color:var(--accent);"><th>参数</th><th>r (全部)</th><th>sig</th><th>r (good)</th></tr>
+        <tr><td>P</td><td style="color:#e91e63;">${formatR(pCorr.r)}</td><td>${sigStr(pCorr.pVal)}</td><td style="color:#e91e63;">${formatR(goodCorr?.P)}</td></tr>
+        <tr><td>T</td><td style="color:#ff9800;">${formatR(tCorr.r)}</td><td>${sigStr(tCorr.pVal)}</td><td style="color:#ff9800;">${formatR(goodCorr?.T)}</td></tr>
+        <tr><td>W</td><td style="color:#2196f3;">${formatR(wCorr.r)}</td><td>${sigStr(wCorr.pVal)}</td><td style="color:#2196f3;">${formatR(goodCorr?.W)}</td></tr>
+      </table>
+      <div style="margin-top:6px;font-size:0.95em;">
+        <div><b>SPE 均值:</b> ${(valid.reduce((s,v)=>s+v.speRTd,0)/valid.length).toFixed(3)}</div>
+        <div><b>SPE 范围:</b> [${valid.reduce((a,v)=>Math.min(a,v.speRTd),Infinity).toFixed(3)}, ${valid.reduce((a,v)=>Math.max(a,v.speRTd),-Infinity).toFixed(3)}]</div>
+        <div style="margin-top:2px;font-size:0.9em;color:var(--text-secondary);">*** p<.001 ** p<.01 * p<.05 ~ p<.1</div>
+        <div style="font-size:0.85em;color:var(--text-secondary);">good = 排除不可靠组 (G1,G2)</div>
+      </div>
+    </div>
+  `;
+}
+
+// ===== SPE Bar Chart per Group =====
+let designSpeBarInst = null;
+function renderSpeBarChart(speMerged) {
+  const canvas = document.getElementById('designSpeBarChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (designSpeBarInst) designSpeBarInst.destroy();
+  const valid = speMerged.filter(s => s.speRTd !== null);
+  const colors = valid.map(s => s.speRTd > 0 ? '#ff9800' : '#2196f3');
+  designSpeBarInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: valid.map(s => `G${s.groupID}`),
+      datasets: [{
+        label: "Cohen's d (RT)",
+        data: valid.map(s => s.speRTd),
+        backgroundColor: colors.map(c => withAlpha(c, 0.7)),
+        borderColor: colors,
+        borderWidth: 1.5,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        title: { display: true, text: '各组 SPE 效应量', color: appState.theme==='light'?'#2c3e50':'#e0e0e0', font:{size:11} },
+        legend: { display: false }
+      },
+      scales: {
+        x: { ticks: { color: appState.theme==='light'?'#5a6c7d':'#90a4ae' } },
+        y: { title: { display: true, text: "Cohen's d" }, min: null, max: null }
+      }
+    }
+  });
+}
+
+function pValueFromR(r, n) {
+  if (n <= 2) return 1;
+  const t = r * Math.sqrt((n - 2) / (1 - r * r));
+  // Approximation of two-tailed p-value from t-distribution with n-2 df
+  const df = n - 2;
+  const x = df / (df + t * t);
+  // Regularized incomplete beta function approximation
+  let p = 1;
+  if (df >= 1) {
+    let a = df / 2, b = 0.5;
+    p = regIncompleteBeta(x, a, b);
+  }
+  return Math.min(1, p);
+}
+
+function regIncompleteBeta(x, a, b) {
+  // Simple continued fraction approximation
+  if (x === 0 || x === 1) return x;
+  const maxIter = 200;
+  let f = 1, c = 1, d = 1 - (a + b) * x / (a + 1);
+  if (Math.abs(d) < 1e-30) d = 1e-30;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= maxIter; m++) {
+    const m2 = 2 * m;
+    // Even term
+    let aa = m * (b - m) * x / ((a + m2 - 1) * (a + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = 1 + aa / c;
+    if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d;
+    h *= d * c;
+    // Odd term
+    aa = -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1));
+    d = 1 + aa * d;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = 1 + aa / c;
+    if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < 1e-10) break;
+  }
+  return Math.exp(Math.log(x) * a + Math.log(1 - x) * b - Math.log(a) - lnBeta(a, b)) * h;
+}
+
+function lnBeta(a, b) {
+  return lgamma(a) + lgamma(b) - lgamma(a + b);
+}
+
+function lgamma(x) {
+  // Stirling's approximation
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  x -= 1;
+  let s = 0.99999999999980993;
+  const g = 7;
+  const c = [676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  for (let i = 0; i < g + 1; i++) s += c[i] / (x + i + 1);
+  const t = x + g + 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(s);
+}
+
+// ===== SPE Left Panel Summary =====
+function renderSpeLeftPanel() {
+  const el = document.getElementById('designSpeInfo');
+  if (!el) return;
+  const speData = computeSpeByGroup();
+  if (!speData.length) { el.style.display = 'none'; return; }
+  const valid = speData.filter(s => s.speRTd !== null);
+  if (!valid.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const avg = valid.reduce((s,v)=>s+v.speRTd,0)/valid.length;
+  const maxSpe = valid.reduce((a,v)=>Math.max(a,v.speRTd),-Infinity);
+  const minSpe = valid.reduce((a,v)=>Math.min(a,v.speRTd),Infinity);
+  const posCount = valid.filter(s=>s.speRTd>0).length;
+  el.innerHTML = `
+    <div style="font-weight:600;color:var(--accent);margin-bottom:3px;">SPE 自我优势效应摘要</div>
+    <div style="line-height:1.6;">
+      <div>Cohen's d(RT) 均值: <b>${avg.toFixed(3)}</b></div>
+      <div>范围: [${minSpe.toFixed(3)}, ${maxSpe.toFixed(3)}]</div>
+      <div>正向SPE组数: <b>${posCount}/${valid.length}</b> (Self比Stranger快)</div>
+      <div style="margin-top:2px;font-size:0.9em;color:var(--text-secondary);">SPE_RT = (Mean_Stranger_RT − Mean_Self_RT) / pooled_SD | SPE_ACC = (Self_ACC − Stranger_ACC)</div>
+    </div>
+  `;
+}
 
 function renderCompareCharts() {
   if (!appState.allData) return;
