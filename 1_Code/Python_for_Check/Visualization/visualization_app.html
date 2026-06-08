@@ -2260,6 +2260,12 @@ async function renderVisualizationTab(lp, rp) {
         <option value="rtMean" selected>RT均值 (秒) — 各分箱平均反应时</option>
         <option value="binIndex">分箱序号 (1, 2, 3...) — 等距排列</option>
       </select>
+      <div style="margin-top:6px;">
+        <label id="crfRTLogLabel" style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.88em;">
+          <input type="checkbox" id="crfRTLogCheck" style="accent-color:var(--accent);">
+          <span>ln(RT) 对数化反应时</span>
+        </label>
+      </div>
     </div>
 
     <div class="section-title">CRF方法说明</div>
@@ -2496,6 +2502,12 @@ function initCRFXAxisControls() {
     _crfXAxisMode = xSelect.value;
     updateAllCRFViews();
   });
+  const rtLogCheck = document.getElementById('crfRTLogCheck');
+  if (rtLogCheck) rtLogCheck.addEventListener('change', () => {
+    _crfRTLog = rtLogCheck.checked;
+    _crfOvData = null;  // Force overview reload
+    updateAllCRFViews();
+  });
 }
 
 function updateAllCRFViews() {
@@ -2652,9 +2664,11 @@ function getFilteredTrials() {
 // upperProp = 被试按"匹配"键的比例 (DDM上边界), 不是Condition==Matching
 // 即使Matching条件中,被试也可能按错键(按不匹配键), 比例不会是100%
 // 参考 ggcube stat_smooth_3d 的 CI surface 设计, 返回 SEM 用于置信区间带
-function computeCRF(trials, nQuantiles) {
+function computeCRF(trials, nQuantiles, logRT = false) {
   if (trials.length < nQuantiles * 2) return null;
-  const sorted = [...trials].sort((a, b) => a.RT - b.RT);
+  // Optionally log-transform RT (natural log)
+  const getRT = logRT ? (t) => Math.log(Math.max(0.001, t.RT || 0.001)) : (t) => t.RT;
+  const sorted = [...trials].sort((a, b) => getRT(a) - getRT(b));
   const n = sorted.length;
   const qSize = Math.floor(n / nQuantiles);
   const bins = [];
@@ -2662,17 +2676,18 @@ function computeCRF(trials, nQuantiles) {
   let globalNCorrect = 0;
   for (let i = 0; i < nQuantiles; i++) {
     const end = i === nQuantiles - 1 ? n : start + qSize;
-    let rtSum = 0, rtSumSq = 0, nMatchResp = 0, nCorrect = 0;
+    let lnSum = 0, lnSumSq = 0, nMatchResp = 0, nCorrect = 0;
     for (let j = start; j < end; j++) {
-      rtSum += sorted[j].RT;
-      rtSumSq += sorted[j].RT * sorted[j].RT;
+      const v = getRT(sorted[j]);
+      lnSum += v;
+      lnSumSq += v * v;
       if (sorted[j].ResponseIsMatch) nMatchResp++;
       if (sorted[j].Correct === 1) nCorrect++;
     }
     const count = end - start;
     globalNCorrect += nCorrect;
-    const rtMean = rtSum / count;
-    const rtVar = (rtSumSq / count) - (rtMean * rtMean);
+    const rtMean = lnSum / count;
+    const rtVar = (lnSumSq / count) - (rtMean * rtMean);
     const rtSD = Math.sqrt(Math.max(0, rtVar));
     const upperProp = nMatchResp / count;
     const sem = Math.sqrt(upperProp * (1 - upperProp) / count);
@@ -2716,8 +2731,8 @@ function updateCRFChart() {
     
     _crfCache = { selfTrials: selfTrials.length, strangerTrials: strangerTrials.length, nQ };
 
-    const crfSelfResult = computeCRF(selfTrials, nQ);
-    const crfStrangerResult = computeCRF(strangerTrials, nQ);
+    const crfSelfResult = computeCRF(selfTrials, nQ, _crfRTLog);
+    const crfStrangerResult = computeCRF(strangerTrials, nQ, _crfRTLog);
     const crfSelf = crfSelfResult ? crfSelfResult.bins : null;
     const crfStranger = crfStrangerResult ? crfStrangerResult.bins : null;
     _crfCache.overallACCSelf = crfSelfResult ? crfSelfResult.overallACC : 0;
@@ -2731,7 +2746,7 @@ function updateCRFChart() {
     const useBinACC = isACC && _crfACCMode === 'bin';
     const useBinIndex = _crfXAxisMode === 'binIndex';
     const yLabel = isACC ? (useOverallACC ? 'ACC (整体准确率)' : 'ACC (区间准确率)') : '匹配键选择比例 (P_Match_Response)';
-    const xLabel = useBinIndex ? '分箱序号 (Bin Index)' : 'RT (秒)';
+    const xLabel = useBinIndex ? '分箱序号 (Bin Index)' : (_crfRTLog ? 'ln(RT)' : 'RT (秒)');
     titleEl.textContent = `(n=${trials.length}, Self=${selfTrials.length}, Stranger=${strangerTrials.length}, Q=${nQ})`;
 
     const ctx = document.getElementById('crfChart').getContext('2d');
@@ -2946,7 +2961,7 @@ function updateCRFChart() {
                   if (useBinIndex) {
                     return `${d.label}: Bin=${ctx.parsed.x.toFixed(0)}, ${isACC ? 'ACC' : 'P(Match)'}=${(ctx.parsed.y*100).toFixed(1)}%`;
                   }
-                  return `${d.label}: RT=${ctx.parsed.x.toFixed(2)}s, ${isACC ? 'ACC' : 'P(Match)'}=${(ctx.parsed.y*100).toFixed(1)}%`;
+                  return `${d.label}: ${_crfRTLog ? 'ln(RT)' : 'RT'}=${ctx.parsed.x.toFixed(2)}${_crfRTLog ? '' : 's'}, ${isACC ? 'ACC' : 'P(Match)'}=${(ctx.parsed.y*100).toFixed(1)}%`;
                 }
               }
             }
@@ -3019,7 +3034,7 @@ function updateSPEChart(crfSelf, crfStranger) {
   }
 
   const speLabel = isACC ? 'SPE = ACC_Self - ACC_Stranger' : 'SPE = P_Self - P_Stranger';
-  const xLabelSPE = useBinIndex ? '分箱序号 (Bin Index)' : 'RT均值 (秒)';
+  const xLabelSPE = useBinIndex ? '分箱序号 (Bin Index)' : (_crfRTLog ? 'ln(RT)' : 'RT均值 (秒)');
 
   const speXs = speData.map(d => d.x);
   const speYs = speData.map(d => d.y);
@@ -3122,7 +3137,7 @@ function updateSPEChart(crfSelf, crfStranger) {
                 const d = ctx.dataset;
                 if (d.label.includes('trend')) return '';
                 const metricName = isACC ? 'ΔACC' : 'ΔP(Match)';
-                return `SPE: ${useBinIndex ? 'Bin='+ctx.parsed.x.toFixed(0) : 'RT='+ctx.parsed.x.toFixed(2)+'s'}, ${metricName}=${(ctx.parsed.y*100).toFixed(1)}%`;
+                return `SPE: ${useBinIndex ? 'Bin='+ctx.parsed.x.toFixed(0) : (_crfRTLog ? 'ln(RT)=' : 'RT=')+ctx.parsed.x.toFixed(2)+(_crfRTLog ? '' : 's')}, ${metricName}=${(ctx.parsed.y*100).toFixed(1)}%`;
               }
             }
           }
@@ -3428,8 +3443,11 @@ let _crfOvDragStart = { x: 0, y: 0, offsetX: 0, offsetY: 0 };
 let _crfYMetric = 'matchProp';
 let _crfACCMode = 'bin';
 let _crfXAxisMode = 'rtMean';
+let _crfRTLog = false;  // log-transform RT
 let _crfOvShowSelf = true;
 let _crfOvShowStranger = true;
+let _crfOvCondition = 'all';  // 'all' | 'Matching' | 'NonMatching'
+let _crfOvSplitCondition = false;  // 四条件模式: Self/Stranger × Matching/NonMatching
 
 function initCRFOverview() {
   const btnGroup = document.getElementById('crfOvLevelGroup');
@@ -3598,15 +3616,20 @@ async function loadCRFOverviewData() {
     if (!data || !data.trials) { document.getElementById('crfOverviewInfo').textContent = '无数据'; return; }
     _crfOvQ = parseInt(document.getElementById('crfOvQuantile')?.value || 5);
 
-    const formal = data.trials.filter(t => t.RT !== null && t.stage === 'formal');
+    let formal = data.trials.filter(t => t.RT !== null && t.stage === 'formal');
+    // Condition filter
+    if (_crfOvCondition !== 'all') {
+      formal = formal.filter(t => t.Condition === _crfOvCondition);
+    }
+    const condLabel = _crfOvCondition === 'all' ? '全部条件' : _crfOvCondition;
     const aggByGroup = {};
     // Compute group-level CRFs
     for (let gid = 1; gid <= 8; gid++) {
       const gTrials = formal.filter(t => t.groupID === gid);
       const selfT = gTrials.filter(t => t.Identity === 'Self');
       const strangerT = gTrials.filter(t => t.Identity === 'Stranger');
-      const selfCRFRes = computeCRF(selfT, _crfOvQ);
-      const strangerCRFRes = computeCRF(strangerT, _crfOvQ);
+      const selfCRFRes = computeCRF(selfT, _crfOvQ, _crfRTLog);
+      const strangerCRFRes = computeCRF(strangerT, _crfOvQ, _crfRTLog);
       aggByGroup[gid] = {
         selfCRF: selfCRFRes ? selfCRFRes.bins : null,
         strangerCRF: strangerCRFRes ? strangerCRFRes.bins : null,
@@ -3622,8 +3645,8 @@ async function loadCRFOverviewData() {
       const sTrials = formal.filter(t => t.groupID === gid && t.subjectID === sid);
       const selfT = sTrials.filter(t => t.Identity === 'Self');
       const strangerT = sTrials.filter(t => t.Identity === 'Stranger');
-      const sc = computeCRF(selfT, _crfOvQ);
-      const stc = computeCRF(strangerT, _crfOvQ);
+      const sc = computeCRF(selfT, _crfOvQ, _crfRTLog);
+      const stc = computeCRF(strangerT, _crfOvQ, _crfRTLog);
       if (sc && stc) {
         if (!subjMap[gid]) subjMap[gid] = [];
         subjMap[gid].push({
@@ -3637,9 +3660,33 @@ async function loadCRFOverviewData() {
     });
 
     _crfOvData = { aggByGroup, subjMap, nSubj: subjIds.length };
+    // Compute 4-condition split (Self/Stranger × Matching/NonMatching)
+    const splitByGroup = {};
+    for (let gid = 1; gid <= 8; gid++) {
+      const gTrials = formal.filter(t => t.groupID === gid);
+      const selfMatch = gTrials.filter(t => t.Identity === 'Self' && t.Condition === 'Matching');
+      const selfNonmatch = gTrials.filter(t => t.Identity === 'Self' && t.Condition === 'NonMatching');
+      const strangerMatch = gTrials.filter(t => t.Identity === 'Stranger' && t.Condition === 'Matching');
+      const strangerNonmatch = gTrials.filter(t => t.Identity === 'Stranger' && t.Condition === 'NonMatching');
+      const sm = computeCRF(selfMatch, _crfOvQ, _crfRTLog);
+      const sn = computeCRF(selfNonmatch, _crfOvQ, _crfRTLog);
+      const tm = computeCRF(strangerMatch, _crfOvQ, _crfRTLog);
+      const tn = computeCRF(strangerNonmatch, _crfOvQ, _crfRTLog);
+      splitByGroup[gid] = {
+        selfMatchCRF: sm ? sm.bins : null,
+        selfNonmatchCRF: sn ? sn.bins : null,
+        strangerMatchCRF: tm ? tm.bins : null,
+        strangerNonmatchCRF: tn ? tn.bins : null,
+        selfMatchOACC: sm ? sm.overallACC : 0,
+        selfNonmatchOACC: sn ? sn.overallACC : 0,
+        strangerMatchOACC: tm ? tm.overallACC : 0,
+        strangerNonmatchOACC: tn ? tn.overallACC : 0,
+      };
+    }
+    _crfOvData.splitByGroup = splitByGroup;
     document.getElementById('crfOverviewInfo').textContent =
       `已加载 ${Object.values(subjMap).reduce((s,a)=>s+a.length,0)} 被试 | ` +
-      `8组 × Self/Stranger | Q=${_crfOvQ}`;
+      `8组 × Self/Stranger | Q=${_crfOvQ} | ${condLabel}`;
     _crfOvVisible = new Set([1,2,3,4,5,6,7,8]);
     renderCRFOverview();
   } catch(e) {
@@ -3695,7 +3742,7 @@ function renderCRFOverview() {
   const getOvX = (b, idx) => useBinIndexOv ? (idx + 1) : b.rtMean;
 
   const yTitle = isACC ? (useOverallACC ? 'ACC (overall)' : 'ACC (bin)') : 'P(Match Key)';
-  const xTitleOv = useBinIndexOv ? 'Bin Index' : 'RT bin mean (s)';
+  const xTitleOv = useBinIndexOv ? 'Bin Index' : (_crfRTLog ? 'ln(RT)' : 'RT bin mean (s)');
 
   // Plot area background
   ctx.fillStyle = appState.theme === 'light' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.02)';
@@ -3867,9 +3914,29 @@ function renderCRFOverview() {
       const gd = _crfOvData.aggByGroup[gid];
       const selfOACC = gd.selfOverallACC || 0;
       const strangerOACC = gd.strangerOverallACC || 0;
-      drawFillBand(gd.selfCRF, gd.strangerCRF, color, 0.08, selfOACC, strangerOACC);
-      if (showSelf) { drawCRFGlow(gd.selfCRF, color, 0.15, selfOACC); drawCRFLine(gd.selfCRF, color, false, 0.9, 2.5, selfOACC); }
-      if (showStranger) { drawCRFLine(gd.strangerCRF, color, true, 0.6, 1.6, strangerOACC); }
+
+      if (_crfOvSplitCondition && _crfOvData.splitByGroup) {
+        // 四条件模式: Self/Stranger × Matching/NonMatching
+        const sp = _crfOvData.splitByGroup[gid];
+        if (!sp) continue;
+        // Self + Matching: 粗实线, 圆点
+        if (showSelf && sp.selfMatchCRF) drawCRFLine(sp.selfMatchCRF, color, false, 0.92, 2.8, sp.selfMatchOACC);
+        // Self + NonMatching: 细实线, 空心圆
+        if (showSelf && sp.selfNonmatchCRF) {
+          drawCRFLine(sp.selfNonmatchCRF, withAlpha(color, 0.55), false, 0.7, 1.3, sp.selfNonmatchOACC);
+        }
+        // Stranger + Matching: 粗虚线, X号
+        if (showStranger && sp.strangerMatchCRF) drawCRFLine(sp.strangerMatchCRF, color, true, 0.65, 1.8, sp.strangerMatchOACC);
+        // Stranger + NonMatching: 细点线, 小X
+        if (showStranger && sp.strangerNonmatchCRF) {
+          drawCRFLine(sp.strangerNonmatchCRF, withAlpha(color, 0.4), true, 0.75, 1.0, sp.strangerNonmatchOACC);
+        }
+      } else {
+        // 原始模式: Self / Stranger
+        drawFillBand(gd.selfCRF, gd.strangerCRF, color, 0.08, selfOACC, strangerOACC);
+        if (showSelf) { drawCRFGlow(gd.selfCRF, color, 0.15, selfOACC); drawCRFLine(gd.selfCRF, color, false, 0.9, 2.5, selfOACC); }
+        if (showStranger) { drawCRFLine(gd.strangerCRF, color, true, 0.6, 1.6, strangerOACC); }
+      }
     } else {
       const subs = _crfOvData.subjMap[gid];
       if (!subs) continue;
@@ -3929,7 +3996,22 @@ function buildCrfOvLegend() {
   html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;white-space:nowrap;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:' + (_crfOvShowStranger ? 'rgba(33,150,243,0.12)' : 'transparent') + ';" id="crfOvToggleStranger">';
   html += '<input type="checkbox" id="crfOvCheckStranger" ' + (_crfOvShowStranger ? 'checked' : '') + ' style="accent-color:#2196f3;">';
   html += '<span style="font-weight:600;color:#2196f3;">✕ Stranger</span></label>';
-  html += '<span style="font-size:0.78em;color:var(--text-secondary);margin-left:auto;">浅色填充 = Self−Stranger 差异区域</span>';
+  html += '<div style="width:1px;height:16px;background:var(--border);margin:0 4px;"></div>';
+  html += '<span style="font-size:0.82em;color:var(--text-secondary);white-space:nowrap;">条件:</span>';
+  html += `<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;white-space:nowrap;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:${_crfOvCondition==='all'?'rgba(100,181,246,0.1)':'transparent'};" id="crfOvToggleCondAll">`;
+  html += '<input type="radio" name="crfOvCond" value="all" ' + (_crfOvCondition === 'all' ? 'checked' : '') + ' style="accent-color:var(--accent);">';
+  html += '<span>全部</span></label>';
+  html += `<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;white-space:nowrap;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:${_crfOvCondition==='Matching'?'rgba(76,175,80,0.12)':'transparent'};" id="crfOvToggleCondMatch">`;
+  html += '<input type="radio" name="crfOvCond" value="Matching" ' + (_crfOvCondition === 'Matching' ? 'checked' : '') + ' style="accent-color:#4caf50;">';
+  html += '<span style="color:#4caf50;font-weight:500;">Matching</span></label>';
+  html += `<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;white-space:nowrap;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:${_crfOvCondition==='NonMatching'?'rgba(244,67,54,0.12)':'transparent'};" id="crfOvToggleCondNonmatch">`;
+  html += '<input type="radio" name="crfOvCond" value="NonMatching" ' + (_crfOvCondition === 'NonMatching' ? 'checked' : '') + ' style="accent-color:#f44336;">';
+  html += '<span style="color:#f44336;font-weight:500;">NonMatching</span></label>';
+  html += '<div style="width:1px;height:16px;background:var(--border);margin:0 4px;"></div>';
+  html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.82em;white-space:nowrap;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:' + (_crfOvSplitCondition ? 'rgba(156,39,176,0.1)' : 'transparent') + ';" id="crfOvToggleSplit">';
+  html += '<input type="checkbox" id="crfOvCheckSplit" ' + (_crfOvSplitCondition ? 'checked' : '') + ' style="accent-color:#9c27b0;">';
+  html += '<span style="font-weight:500;color:#9c27b0;">⚡ 四条件 (2×2)</span></label>';
+  html += '<span style="font-size:0.78em;color:var(--text-secondary);margin-left:auto;">' + (_crfOvSplitCondition ? '粗=Match 细=Nonmatch' : '浅色填充 = Self−Stranger 差异区域') + '</span>';
   el.innerHTML = html;
 
   el.querySelectorAll('[data-ov-g]').forEach(div => {
@@ -3951,6 +4033,23 @@ function buildCrfOvLegend() {
   const strangerCheck = document.getElementById('crfOvCheckStranger');
   if (strangerCheck) strangerCheck.addEventListener('change', () => {
     _crfOvShowStranger = strangerCheck.checked;
+    renderCRFOverview();
+  });
+
+  // Condition radio buttons (in legend)
+  el.querySelectorAll('input[name="crfOvCond"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (radio.checked) {
+        _crfOvCondition = radio.value;
+        _crfOvData = null;
+        loadCRFOverviewData();
+      }
+    });
+  });
+  // 4-condition split toggle
+  const splitCheck = document.getElementById('crfOvCheckSplit');
+  if (splitCheck) splitCheck.addEventListener('change', () => {
+    _crfOvSplitCondition = splitCheck.checked;
     renderCRFOverview();
   });
 }
