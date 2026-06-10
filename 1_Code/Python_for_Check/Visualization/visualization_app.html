@@ -14,6 +14,8 @@
   --bg-secondary: #1a2a3a;
   --bg-tertiary: #132030;
   --bg-card: #0d1b2a;
+  --bg-hover: rgba(100,181,246,0.08);
+  --text: #e0e0e0;
   --text-primary: #e0e0e0;
   --text-secondary: #90a4ae;
   --accent: #64b5f6;
@@ -33,6 +35,8 @@
   --bg-secondary: #ffffff;
   --bg-tertiary: #eef2f7;
   --bg-card: #ffffff;
+  --bg-hover: rgba(25,118,210,0.06);
+  --text: #2c3e50;
   --text-primary: #2c3e50;
   --text-secondary: #5a6c7d;
   --accent: #1976d2;
@@ -5797,6 +5801,19 @@ async function init() {
 let _speData = null;
 let _speDetailData = null;
 let _speCharts = [];
+let _speCondition = 'all';  // 'all' | 'Matching' | 'NonMatching'
+let _lastSPEView = 'overview';
+
+function getSpeD(exp) {
+  if (_speCondition === 'Matching') return exp.spe_rt_d_matching;
+  if (_speCondition === 'NonMatching') return exp.spe_rt_d_nonmatch;
+  return exp.spe_rt_d;
+}
+function getSpeAccD(exp) {
+  if (_speCondition === 'Matching') return exp.spe_acc_d_matching;
+  if (_speCondition === 'NonMatching') return exp.spe_acc_d_nonmatch;
+  return exp.spe_acc_d;
+}
 
 function destroySPECharts() {
   _speCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
@@ -5808,7 +5825,13 @@ function renderSPETab(lp, rp) {
   lp.innerHTML = `
     <div class="section-title">SPE 数据库 — P·T·W 与自我加工效应</div>
     <div style="font-size:0.78em;color:var(--text-secondary);margin-bottom:8px;line-height:1.5;">
-      60项实验的元分析级数据浏览。SPE = Self − Stranger 效应量 (Cohen's d)。
+      60项实验的元分析级数据浏览。SPE<sub>RT</sub> = Stranger − Self (Cohen's d)，SPE<sub>ACC</sub> = Self − Stranger (Cohen's d)。
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+      <span style="font-size:0.72em;color:var(--text-secondary);line-height:2;">条件:</span>
+      <button class="crf-mode-btn active" id="speCondAll" style="font-size:0.72em;padding:2px 8px;">全部</button>
+      <button class="crf-mode-btn" id="speCondMatching" style="font-size:0.72em;padding:2px 8px;">Matching</button>
+      <button class="crf-mode-btn" id="speCondNonMatch" style="font-size:0.72em;padding:2px 8px;">NonMatching</button>
     </div>
     <div id="speBtnRow" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
       <button class="crf-mode-btn active" id="speBtnOverview" style="font-size:0.78em;">群体总览</button>
@@ -5831,7 +5854,23 @@ function renderSPETab(lp, rp) {
   document.getElementById('speBtnPW').addEventListener('click', () => switchSPEView('pw'));
   document.getElementById('speBtnTW').addEventListener('click', () => switchSPEView('tw'));
   document.getElementById('speBtnIndividual').addEventListener('click', () => switchSPEView('individual'));
+
+  document.getElementById('speCondAll').addEventListener('click', () => switchSPECondition('all'));
+  document.getElementById('speCondMatching').addEventListener('click', () => switchSPECondition('Matching'));
+  document.getElementById('speCondNonMatch').addEventListener('click', () => switchSPECondition('NonMatching'));
+
   switchSPEView('overview');
+}
+
+function switchSPECondition(cond) {
+  _speCondition = cond;
+  ['speCondAll','speCondMatching','speCondNonMatch'].forEach(bid => {
+    const el = document.getElementById(bid); if (el) el.classList.remove('active');
+  });
+  const activeId = cond === 'all' ? 'speCondAll' : (cond === 'Matching' ? 'speCondMatching' : 'speCondNonMatch');
+  const a = document.getElementById(activeId); if (a) a.classList.add('active');
+  // Refresh current view
+  switchSPEView(_lastSPEView || 'overview');
 }
 
 function setSPEActiveBtn(id) {
@@ -5855,6 +5894,7 @@ async function ensureSPEData() {
 }
 
 function switchSPEView(view) {
+  _lastSPEView = view;
   switch(view) {
     case 'overview': setSPEActiveBtn('speBtnOverview'); renderSPEOverview(); break;
     case 'pw': setSPEActiveBtn('speBtnPW'); renderSPEPW(); break;
@@ -5868,24 +5908,35 @@ async function renderSPEOverview() {
   const data = await ensureSPEData();
   if (!data || !data.experiments) return;
   destroySPECharts();
-  const exps = data.experiments.filter(e => e.spe_rt_d !== null);
+  const exps = data.experiments.filter(e => getSpeD(e) !== null);
   const nValid = exps.length;
   const nTotal = data.experiments.length;
+  const condLabel = _speCondition === 'Matching' ? ' (Matching)' : (_speCondition === 'NonMatching' ? ' (NonMatching)' : '');
   const rp = document.getElementById('speRightCharts');
   rp.innerHTML = `
-    <div style="font-weight:600;color:var(--accent);">群体总览 (${nValid}/${nTotal} 实验有有效SPE)</div>
+    <div style="font-weight:600;color:var(--accent);">群体总览${condLabel} (${nValid}/${nTotal} 实验有有效SPE)</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <div style="flex:1;min-width:320px;height:300px;"><canvas id="speHistRT"></canvas></div>
       <div style="flex:1;min-width:320px;height:300px;"><canvas id="speHistACC"></canvas></div>
     </div>
-    <div style="font-size:0.72em;color:var(--text-secondary);line-height:1.5;">
-      SPE<sub>RT</sub> 均值=${(exps.reduce((s,e)=>s+e.spe_rt_d,0)/nValid).toFixed(3)}, 
-      SD=${Math.sqrt(exps.reduce((s,e)=>s+(e.spe_rt_d-exps.reduce((s2,e2)=>s2+e2.spe_rt_d,0)/nValid)**2,0)/nValid).toFixed(3)},
-      范围=[${exps.reduce((a,e)=>Math.min(a,e.spe_rt_d),Infinity).toFixed(3)}, ${exps.reduce((a,e)=>Math.max(a,e.spe_rt_d),-Infinity).toFixed(3)}]
-    </div>
+    <div style="font-size:0.72em;color:var(--text-secondary);line-height:1.5;" id="speOverviewStats"></div>
   `;
-  renderSPEHistogram('speHistRT', exps.map(e => e.spe_rt_d), 'SPE (RT Cohen\'s d)', '#ff9800');
-  renderSPEHistogram('speHistACC', exps.filter(e=>e.spe_acc_d!==null).map(e=>e.spe_acc_d), 'SPE (ACC Cohen\'s d)', '#4caf50');
+  renderSPEHistogram('speHistRT', exps.map(e => getSpeD(e)), 'SPE (RT Cohen\'s d)', '#ff9800');
+  const accExps = exps.filter(e => getSpeAccD(e) !== null);
+  renderSPEHistogram('speHistACC', accExps.map(e => getSpeAccD(e)), 'SPE (ACC Cohen\'s d)', '#4caf50');
+
+  // Compute and display statistics
+  const speRTValues = exps.map(e => getSpeD(e));
+  const meanRT = speRTValues.reduce((s, v) => s + v, 0) / nValid;
+  const varianceRT = speRTValues.reduce((s, v) => s + Math.pow(v - meanRT, 2), 0) / nValid;
+  const sdRT = Math.sqrt(varianceRT);
+  const minRT = Math.min(...speRTValues);
+  const maxRT = Math.max(...speRTValues);
+  
+  document.getElementById('speOverviewStats').innerHTML = `
+    SPE<sub>RT</sub> 均值=${meanRT.toFixed(3)}, SD=${sdRT.toFixed(3)}, 
+    范围=[${minRT.toFixed(3)}, ${maxRT.toFixed(3)}]
+  `;
 
   // Left panel: experiment list
   const ld = document.getElementById('speLeftDetail');
@@ -5893,7 +5944,7 @@ async function renderSPEOverview() {
     <div style="font-weight:600;margin-bottom:4px;">实验列表 (点击查看详情)</div>
     <div style="max-height:calc(100vh - 300px);overflow-y:auto;">
       ${data.experiments.map(e => {
-        const d = e.spe_rt_d;
+        const d = getSpeD(e);
         const color = d === null ? '#888' : (d > 0 ? '#ff9800' : '#2196f3');
         const sign = d === null ? 'N/A' : (d > 0 ? '+' : '');
         return `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.72em;display:flex;justify-content:space-between;">
@@ -5949,14 +6000,15 @@ async function renderSPEPW() {
   const data = await ensureSPEData();
   if (!data) return;
   destroySPECharts();
-  const valid = data.experiments.filter(e => e.spe_rt_d !== null && e.P_ms !== null);
+  const valid = data.experiments.filter(e => getSpeD(e) !== null && e.P_ms !== null);
+  const condLabel = _speCondition === 'Matching' ? ' (Matching)' : (_speCondition === 'NonMatching' ? ' (NonMatching)' : '');
   const rp = document.getElementById('speRightCharts');
   rp.innerHTML = `
-    <div style="font-weight:600;color:var(--accent);">P (练习试次) vs SPE (N=${valid.length})</div>
+    <div style="font-weight:600;color:var(--accent);">P (练习试次) vs SPE${condLabel} (N=${valid.length})</div>
     <div style="height:350px;"><canvas id="spePvRT"></canvas></div>
-    <div style="font-size:0.72em;color:var(--text-secondary);">P = 练习试次数 | SPE = Cohen's d (RT Self vs Stranger)</div>
+    <div style="font-size:0.72em;color:var(--text-secondary);">P = 练习试次数 | SPE = Cohen's d (RT Stranger vs Self)</div>
   `;
-  const scatterData = valid.map(e => ({x: e.P_ms, y: e.spe_rt_d, label: e.pairKey}));
+  const scatterData = valid.map(e => ({x: e.P_ms, y: getSpeD(e), label: e.pairKey}));
   renderSPEScatter('spePvRT', scatterData, 'P (trials)', 'SPE (RT d)', '#e91e63');
 
   const ld = document.getElementById('speLeftDetail');
@@ -5965,7 +6017,7 @@ async function renderSPEPW() {
     <div style="font-size:0.75em;line-height:1.6;">
       ${Array.from(new Set(valid.map(e=>e.P_ms))).sort((a,b)=>a-b).map(p => {
         const subs = valid.filter(e=>e.P_ms===p);
-        const avgD = subs.reduce((s,e)=>s+e.spe_rt_d,0)/subs.length;
+        const avgD = subs.reduce((s,e)=>s+getSpeD(e),0)/subs.length;
         return `<div>P=${p}: N=${subs.length}, 平均SPE=${avgD.toFixed(3)}</div>`;
       }).join('')}
     </div>
@@ -5977,11 +6029,12 @@ async function renderSPETW() {
   const data = await ensureSPEData();
   if (!data) return;
   destroySPECharts();
-  const validW = data.experiments.filter(e => e.spe_rt_d !== null && e.W_ms !== null);
-  const validT = data.experiments.filter(e => e.spe_rt_d !== null && e.T_ms !== null);
+  const validW = data.experiments.filter(e => getSpeD(e) !== null && e.W_ms !== null);
+  const validT = data.experiments.filter(e => getSpeD(e) !== null && e.T_ms !== null);
+  const condLabel = _speCondition === 'Matching' ? ' (Matching)' : (_speCondition === 'NonMatching' ? ' (NonMatching)' : '');
   const rp = document.getElementById('speRightCharts');
   rp.innerHTML = `
-    <div style="font-weight:600;color:var(--accent);">反应窗口 W 和刺激时长 T 与 SPE 的关系</div>
+    <div style="font-weight:600;color:var(--accent);">反应窗口 W 和刺激时长 T 与 SPE${condLabel} 的关系</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <div style="flex:1;min-width:320px;height:320px;"><canvas id="speWvRT"></canvas></div>
       <div style="flex:1;min-width:320px;height:320px;"><canvas id="speTvRT"></canvas></div>
@@ -5991,17 +6044,17 @@ async function renderSPETW() {
       红色虚线 = 线性回归趋势
     </div>
   `;
-  renderSPEScatter('speWvRT', validW.map(e => ({x: e.W_ms, y: e.spe_rt_d, label: e.pairKey})), 'W (反应窗口 ms)', 'SPE (RT d)', '#2196f3');
-  renderSPEScatter('speTvRT', validT.map(e => ({x: e.T_ms, y: e.spe_rt_d, label: e.pairKey})), 'T (刺激时长 ms)', 'SPE (RT d)', '#9c27b0');
+  renderSPEScatter('speWvRT', validW.map(e => ({x: e.W_ms, y: getSpeD(e), label: e.pairKey})), 'W (反应窗口 ms)', 'SPE (RT d)', '#2196f3');
+  renderSPEScatter('speTvRT', validT.map(e => ({x: e.T_ms, y: getSpeD(e), label: e.pairKey})), 'T (刺激时长 ms)', 'SPE (RT d)', '#9c27b0');
 
   // Summary stats
   const ld = document.getElementById('speLeftDetail');
   const wGroups = {};
-  validW.forEach(e => { const k = e.W_ms; if (!wGroups[k]) wGroups[k] = []; wGroups[k].push(e.spe_rt_d); });
+  validW.forEach(e => { const k = e.W_ms; if (!wGroups[k]) wGroups[k] = []; wGroups[k].push(getSpeD(e)); });
   ld.innerHTML = `
     <div style="font-weight:600;margin-bottom:4px;">W 窗口分析</div>
     <div style="font-size:0.75em;line-height:1.6;">
-      <div><b>反应窗口与SPE相关性:</b> r=${pearsonR(validW.map(e=>e.W_ms), validW.map(e=>e.spe_rt_d)).toFixed(3)}</div>
+      <div><b>反应窗口与SPE相关性:</b> r=${pearsonR(validW.map(e=>e.W_ms), validW.map(e=>getSpeD(e))).toFixed(3)}</div>
       ${Object.entries(wGroups).sort((a,b)=>a[0]-b[0]).map(([w,ds]) => {
         const avg = ds.reduce((s,v)=>s+v,0)/ds.length;
         return `<div>W=${w}ms: N=${ds.length}, 平均SPE=${avg.toFixed(3)}</div>`;
@@ -6081,9 +6134,11 @@ async function renderSPEIndividual() {
     const data = await ensureSPEData();
     if (!data) return;
     const filtered = data.experiments.filter(e => e.pairKey.toLowerCase().includes(q.toLowerCase()));
-    resultsDiv.innerHTML = filtered.slice(0, 50).map(e => `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);">
-      ${e.pairKey} <span style="color:${e.spe_rt_d!==null?(e.spe_rt_d>0?'#ff9800':'#2196f3'):'#888'}">${e.spe_rt_d!==null?'d='+e.spe_rt_d.toFixed(3):'N/A'}</span>
-    </div>`).join('');
+    resultsDiv.innerHTML = filtered.slice(0, 50).map(e => {
+      const d = getSpeD(e);
+      return `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);">
+      ${e.pairKey} <span style="color:${d!==null?(d>0?'#ff9800':'#2196f3'):'#888'}">${d!==null?'d='+d.toFixed(3):'N/A'}</span>
+    </div>`;}).join('');
     resultsDiv.querySelectorAll('.spe-exp-row').forEach(row => {
       row.addEventListener('click', () => loadSPEDetail(row.dataset.key));
     });
@@ -6097,7 +6152,7 @@ async function loadSPEDetail(pairKey) {
   const rp = document.getElementById('speRightCharts');
   rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:var(--accent);">⏳ 加载实验详情...</div>';
   try {
-    _speDetailData = await fetchAPI('/api/spe/detail?key=' + encodeURIComponent(pairKey));
+    _speDetailData = await fetchAPI('/api/spe/detail?key=' + encodeURIComponent(pairKey) + '&condition=' + _speCondition);
   } catch(e) {
     rp.innerHTML = '<div style="color:#f44336;">加载失败: '+e.message+'</div>';
     return;
@@ -6119,6 +6174,9 @@ async function loadSPEDetail(pairKey) {
       <div>P: ${d.meta.P_parsed_ms||'N/A'} | T: ${d.meta.T_parsed_ms||'N/A'}ms | W: ${d.meta.W_parsed_ms||'N/A'}ms</div>
     </div>
     <div style="font-weight:600;margin-top:8px;margin-bottom:4px;">个体 SPE (按效应量排序)</div>
+    <div style="font-size:0.65em;color:var(--text-secondary);margin-bottom:6px;">
+      🟠 正 = Self更快 | 🔵 负 = Stranger更快
+    </div>
     <div style="max-height:calc(100vh - 500px);overflow-y:auto;font-size:0.7em;">
       ${subs.map(s => {
         const dVal = s.spe_rt_d;

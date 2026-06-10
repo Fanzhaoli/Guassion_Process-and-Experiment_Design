@@ -344,12 +344,101 @@ def cohens_d(group1, group2):
     return (m1 - m2) / pooled_sd
 
 
-def load_spe_overview():
+def _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter="all"):
+    """Compute per-subject SPE from trial rows with optional Matching/NonMatching filter.
+
+    Args:
+        rows: list of csv dict rows
+        identity_col: column name for identity (Self/Stranger)
+        rt_col: column name for RT
+        acc_col: column name for ACC (can be None)
+        condition_filter: "all", "Matching", or "NonMatching"
+
+    Returns:
+        dict with d_vals, acc_d_vals, self_rts_all, stranger_rts_all,
+             self_accs_all, stranger_accs_all, n_subjects, n_subjects_valid
+    """
+    from collections import defaultdict
+    subj_data = defaultdict(lambda: {"Self": [], "Stranger": []})
+    subj_acc = defaultdict(lambda: {"Self": [], "Stranger": []})
+    has_matching_col = "Matching" in rows[0] if rows else False
+
+    for r in rows:
+        sid = r.get("Subject", "")
+        identity = r.get(identity_col, "")
+        # Optional Matching/NonMatching filtering (normalize case: CSV may use "Nonmatching")
+        if condition_filter != "all" and has_matching_col:
+            trial_cond = r.get("Matching", "").strip()
+            # Normalize comparison: lowercase both sides
+            if trial_cond.lower() != condition_filter.lower():
+                continue
+        try:
+            rt_val = float(r.get(rt_col, ""))
+        except (ValueError, TypeError):
+            continue
+        if identity in ("Self",):
+            subj_data[sid]["Self"].append(rt_val)
+            if acc_col:
+                try:
+                    subj_acc[sid]["Self"].append(int(float(r.get(acc_col, 0))))
+                except (ValueError, TypeError):
+                    pass
+        elif identity in ("Stranger",):
+            subj_data[sid]["Stranger"].append(rt_val)
+            if acc_col:
+                try:
+                    subj_acc[sid]["Stranger"].append(int(float(r.get(acc_col, 0))))
+                except (ValueError, TypeError):
+                    pass
+
+    d_vals = []
+    acc_d_vals = []
+    self_rts_all = []
+    stranger_rts_all = []
+    self_accs_all = []
+    stranger_accs_all = []
+
+    for sid in subj_data:
+        self_rts = subj_data[sid]["Self"]
+        stranger_rts = subj_data[sid]["Stranger"]
+        if len(self_rts) >= 3 and len(stranger_rts) >= 3:
+            d = cohens_d(stranger_rts, self_rts)
+            d_vals.append(d)
+            self_rts_all.extend(self_rts)
+            stranger_rts_all.extend(stranger_rts)
+
+        self_ac = subj_acc[sid]["Self"]
+        stranger_ac = subj_acc[sid]["Stranger"]
+        if len(self_ac) >= 3 and len(stranger_ac) >= 3:
+            try:
+                acc_d = cohens_d(self_ac, stranger_ac)
+                acc_d_vals.append(acc_d)
+                self_accs_all.extend(self_ac)
+                stranger_accs_all.extend(stranger_ac)
+            except:
+                pass
+
+    return {
+        "d_vals": d_vals,
+        "acc_d_vals": acc_d_vals,
+        "self_rts_all": self_rts_all,
+        "stranger_rts_all": stranger_rts_all,
+        "self_accs_all": self_accs_all,
+        "stranger_accs_all": stranger_accs_all,
+        "n_subjects": len(subj_data),
+        "n_subjects_valid": len(d_vals),
+    }
+
+
+def load_spe_overview(condition_filter="all"):
     """Load all SPE experiment metadata and compute group-level SPE effect sizes."""
+    # Normalize condition_filter
+    if not condition_filter or condition_filter not in ("all", "Matching", "NonMatching"):
+        condition_filter = "all"
     log_file = SPE_DIR / "processing_log.csv"
     experiments = []
     if log_file.exists():
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 exp = {
@@ -387,7 +476,11 @@ def load_spe_overview():
 
     # Compute SPE effect sizes from raw data
     for exp in experiments:
-        sp_file = SPE_DIR / exp.get("outputFile", "")
+        output_file = exp.get("outputFile", "")
+        if output_file:
+            sp_file = SPE_DIR / Path(output_file).name
+        else:
+            sp_file = None
         if not sp_file or not sp_file.exists():
             exp["spe_rt_d"] = None
             exp["spe_acc_d"] = None
@@ -400,23 +493,23 @@ def load_spe_overview():
 
         try:
             rows = []
-            with open(sp_file, 'r', encoding='utf-8') as f:
+            with open(sp_file, 'r', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
                 for r in reader:
                     rows.append(r)
 
-            # Group by Subject and Identity
-            from collections import defaultdict
-            subj_data = defaultdict(lambda: {"Self": [], "Stranger": []})
-            subj_acc = defaultdict(lambda: {"Self": [], "Stranger": []})
+            # Detect column names
             identity_col = None
             rt_col = None
             acc_col = None
 
             for col in rows[0].keys() if rows else []:
-                if col in ("Label_Standardized_Identity", "Label_Origin_Identity", "Shape_Standardized_Identity"):
-                    if identity_col is None:
-                        identity_col = col
+                if col == "Label_Standardized_Identity":
+                    identity_col = col
+                    break
+                if identity_col is None and col in ("Label_Origin_Identity", "Shape_Standardized_Identity"):
+                    identity_col = col
+            for col in rows[0].keys() if rows else []:
                 if col in ("RT_ms", "RT_sec"):
                     if rt_col is None or col == "RT_ms":
                         rt_col = col
@@ -429,66 +522,35 @@ def load_spe_overview():
                 exp["n_subjects"] = 0
                 continue
 
-            for r in rows:
-                sid = r.get("Subject", "")
-                identity = r.get(identity_col, "")
-                try:
-                    rt_val = float(r.get(rt_col, ""))
-                except (ValueError, TypeError):
-                    continue
-                if identity in ("Self",):
-                    subj_data[sid]["Self"].append(rt_val)
-                    if acc_col:
-                        try:
-                            subj_acc[sid]["Self"].append(int(float(r.get(acc_col, 0))))
-                        except (ValueError, TypeError):
-                            pass
-                elif identity in ("Stranger",):
-                    subj_data[sid]["Stranger"].append(rt_val)
-                    if acc_col:
-                        try:
-                            subj_acc[sid]["Stranger"].append(int(float(r.get(acc_col, 0))))
-                        except (ValueError, TypeError):
-                            pass
+            # Compute SPE for all conditions + matching + nonmatching
+            result = _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter)
 
-            # Compute per-subject Cohen's d for RT
-            d_vals = []
-            acc_d_vals = []
-            self_rts_all = []
-            stranger_rts_all = []
-            self_accs_all = []
-            stranger_accs_all = []
+            exp["n_subjects"] = result["n_subjects"]
+            exp["n_subjects_valid"] = result["n_subjects_valid"]
+            exp["spe_rt_d"] = round(statistics.mean(result["d_vals"]), 4) if result["d_vals"] else None
+            exp["spe_rt_se"] = round(statistics.stdev(result["d_vals"]) / math.sqrt(len(result["d_vals"])), 4) if len(result["d_vals"]) >= 2 else None
+            exp["spe_acc_d"] = round(statistics.mean(result["acc_d_vals"]), 4) if result["acc_d_vals"] else None
+            exp["spe_acc_se"] = round(statistics.stdev(result["acc_d_vals"]) / math.sqrt(len(result["acc_d_vals"])), 4) if len(result["acc_d_vals"]) >= 2 else None
+            exp["self_mean_rt"] = round(statistics.mean(result["self_rts_all"]), 1) if result["self_rts_all"] else None
+            exp["stranger_mean_rt"] = round(statistics.mean(result["stranger_rts_all"]), 1) if result["stranger_rts_all"] else None
+            exp["self_acc"] = round(statistics.mean(result["self_accs_all"]), 4) if result["self_accs_all"] else None
+            exp["stranger_acc"] = round(statistics.mean(result["stranger_accs_all"]), 4) if result["stranger_accs_all"] else None
 
-            for sid in subj_data:
-                self_rts = subj_data[sid]["Self"]
-                stranger_rts = subj_data[sid]["Stranger"]
-                if len(self_rts) >= 3 and len(stranger_rts) >= 3:
-                    d = cohens_d(self_rts, stranger_rts)
-                    d_vals.append(d)
-                    self_rts_all.extend(self_rts)
-                    stranger_rts_all.extend(stranger_rts)
-
-                self_ac = subj_acc[sid]["Self"]
-                stranger_ac = subj_acc[sid]["Stranger"]
-                if len(self_ac) >= 3 and len(stranger_ac) >= 3:
-                    try:
-                        acc_d = cohens_d(self_ac, stranger_ac)
-                        acc_d_vals.append(acc_d)
-                        self_accs_all.extend(self_ac)
-                        stranger_accs_all.extend(stranger_ac)
-                    except:
-                        pass
-
-            exp["n_subjects"] = len(subj_data)
-            exp["spe_rt_d"] = round(statistics.mean(d_vals), 4) if d_vals else None
-            exp["spe_rt_se"] = round(statistics.stdev(d_vals) / math.sqrt(len(d_vals)), 4) if len(d_vals) >= 2 else None
-            exp["spe_acc_d"] = round(statistics.mean(acc_d_vals), 4) if acc_d_vals else None
-            exp["spe_acc_se"] = round(statistics.stdev(acc_d_vals) / math.sqrt(len(acc_d_vals)), 4) if len(acc_d_vals) >= 2 else None
-            exp["self_mean_rt"] = round(statistics.mean(self_rts_all), 1) if self_rts_all else None
-            exp["stranger_mean_rt"] = round(statistics.mean(stranger_rts_all), 1) if stranger_rts_all else None
-            exp["self_acc"] = round(statistics.mean(self_accs_all), 4) if self_accs_all else None
-            exp["stranger_acc"] = round(statistics.mean(stranger_accs_all), 4) if stranger_accs_all else None
-            exp["n_subjects_valid"] = len(d_vals)
+            # Always compute Matching-only and NonMatching-only SPE for frontend toggle
+            try:
+                result_m = _compute_subject_spe(rows, identity_col, rt_col, acc_col, "Matching")
+                result_nm = _compute_subject_spe(rows, identity_col, rt_col, acc_col, "NonMatching")
+                exp["spe_rt_d_matching"] = round(statistics.mean(result_m["d_vals"]), 4) if result_m["d_vals"] else None
+                exp["spe_acc_d_matching"] = round(statistics.mean(result_m["acc_d_vals"]), 4) if result_m["acc_d_vals"] else None
+                exp["spe_rt_d_nonmatch"] = round(statistics.mean(result_nm["d_vals"]), 4) if result_nm["d_vals"] else None
+                exp["spe_acc_d_nonmatch"] = round(statistics.mean(result_nm["acc_d_vals"]), 4) if result_nm["acc_d_vals"] else None
+                exp["n_valid_matching"] = len(result_m["d_vals"])
+                exp["n_valid_nonmatch"] = len(result_nm["d_vals"])
+            except Exception as e:
+                exp["spe_rt_d_matching"] = None
+                exp["spe_acc_d_matching"] = None
+                exp["spe_rt_d_nonmatch"] = None
+                exp["spe_acc_d_nonmatch"] = None
 
         except Exception as e:
             exp["spe_rt_d"] = None
@@ -499,7 +561,7 @@ def load_spe_overview():
     return {"experiments": experiments, "count": len(experiments)}
 
 
-def load_spe_experiment_detail(pair_key):
+def load_spe_experiment_detail(pair_key, condition_filter="all"):
     """Load full detail for one SPE experiment including per-subject SPE."""
     if not pair_key:
         return {"error": "Missing pairKey parameter"}
@@ -508,7 +570,7 @@ def load_spe_experiment_detail(pair_key):
     output_file = None
     exp_meta = {}
     if log_file.exists():
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, 'r', encoding='utf-8-sig') as f:
             for row in csv.DictReader(f):
                 if row.get("Pair_Key") == pair_key:
                     output_file = row.get("Output_File", "")
@@ -526,13 +588,13 @@ def load_spe_experiment_detail(pair_key):
     if not output_file:
         return {"error": f"Experiment {pair_key} not found in processing log"}
 
-    sp_file = SPE_DIR / output_file
+    sp_file = SPE_DIR / Path(output_file).name
     if not sp_file.exists():
-        return {"error": f"Data file {output_file} not found"}
+        return {"error": f"Data file {output_file} not found at {sp_file}"}
 
     try:
         rows = []
-        with open(sp_file, 'r', encoding='utf-8') as f:
+        with open(sp_file, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for r in reader:
                 rows.append(r)
@@ -545,9 +607,12 @@ def load_spe_experiment_detail(pair_key):
         acc_col = None
 
         for col in rows[0].keys() if rows else []:
-            if col in ("Label_Standardized_Identity", "Label_Origin_Identity", "Shape_Standardized_Identity"):
-                if identity_col is None:
-                    identity_col = col
+            if col == "Label_Standardized_Identity":
+                identity_col = col
+                break
+            if identity_col is None and col in ("Label_Origin_Identity", "Shape_Standardized_Identity"):
+                identity_col = col
+        for col in rows[0].keys() if rows else []:
             if col in ("RT_ms", "RT_sec"):
                 if rt_col is None or col == "RT_ms":
                     rt_col = col
@@ -557,47 +622,55 @@ def load_spe_experiment_detail(pair_key):
         if not identity_col or not rt_col:
             return {"error": "Cannot determine identity or RT column"}
 
+        # Use helper function to compute SPE with condition filter
+        result = _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter)
+
+        subjects = []
+        all_self_rt = result["self_rts_all"]
+        all_stranger_rt = result["stranger_rts_all"]
+        all_self_acc = result["self_accs_all"]
+        all_stranger_acc = result["stranger_accs_all"]
+
+        # Rebuild subj_data for per-subject detail display
+        sq = _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter)
+        # Actually need per-subject breakdown - rebuild directly
+        subj_data2 = defaultdict(lambda: {"Self": [], "Stranger": []})
+        subj_acc2 = defaultdict(lambda: {"Self": [], "Stranger": []})
+        has_matching_col = "Matching" in rows[0] if rows else False
         for r in rows:
             sid = r.get("Subject", "")
             identity = r.get(identity_col, "")
+            if condition_filter != "all" and has_matching_col:
+                trial_cond = r.get("Matching", "").strip()
+                if trial_cond.lower() != condition_filter.lower():
+                    continue
             try:
                 rt_val = float(r.get(rt_col, ""))
             except (ValueError, TypeError):
                 continue
             if identity in ("Self",):
-                subj_data[sid]["Self"].append(rt_val)
+                subj_data2[sid]["Self"].append(rt_val)
                 if acc_col:
                     try:
-                        subj_acc[sid]["Self"].append(int(float(r.get(acc_col, 0))))
+                        subj_acc2[sid]["Self"].append(int(float(r.get(acc_col, 0))))
                     except (ValueError, TypeError):
                         pass
             elif identity in ("Stranger",):
-                subj_data[sid]["Stranger"].append(rt_val)
+                subj_data2[sid]["Stranger"].append(rt_val)
                 if acc_col:
                     try:
-                        subj_acc[sid]["Stranger"].append(int(float(r.get(acc_col, 0))))
+                        subj_acc2[sid]["Stranger"].append(int(float(r.get(acc_col, 0))))
                     except (ValueError, TypeError):
                         pass
 
-        subjects = []
-        all_self_rt = []
-        all_stranger_rt = []
-        all_self_acc = []
-        all_stranger_acc = []
+        for sid in sorted(subj_data2.keys(), key=lambda x: (x.isdigit(), x)):
+            self_rts = subj_data2[sid]["Self"]
+            stranger_rts = subj_data2[sid]["Stranger"]
+            self_ac = subj_acc2[sid]["Self"]
+            stranger_ac = subj_acc2[sid]["Stranger"]
 
-        for sid in sorted(subj_data.keys(), key=lambda x: (x.isdigit(), x)):
-            self_rts = subj_data[sid]["Self"]
-            stranger_rts = subj_data[sid]["Stranger"]
-            self_ac = subj_acc[sid]["Self"]
-            stranger_ac = subj_acc[sid]["Stranger"]
-
-            d_rt = cohens_d(self_rts, stranger_rts) if len(self_rts) >= 3 and len(stranger_rts) >= 3 else None
+            d_rt = cohens_d(stranger_rts, self_rts) if len(self_rts) >= 3 and len(stranger_rts) >= 3 else None
             d_acc = cohens_d(self_ac, stranger_ac) if len(self_ac) >= 3 and len(stranger_ac) >= 3 else None
-
-            all_self_rt.extend(self_rts)
-            all_stranger_rt.extend(stranger_rts)
-            all_self_acc.extend(self_ac)
-            all_stranger_acc.extend(stranger_ac)
 
             subjects.append({
                 "subjectID": sid,
@@ -674,10 +747,12 @@ class AppHandler(http.server.BaseHTTPRequestHandler):
             elif path == '/api/health':
                 self._json({"status": "ok", "message": "Server is running"})
             elif path == '/api/spe/overview':
-                self._json(load_spe_overview())
+                cond = params.get('condition', ['all'])[0]
+                self._json(load_spe_overview(condition_filter=cond))
             elif path == '/api/spe/detail':
                 pk = params.get('key', [None])[0]
-                self._json(load_spe_experiment_detail(unquote(pk) if pk else None))
+                cond = params.get('condition', ['all'])[0]
+                self._json(load_spe_experiment_detail(unquote(pk) if pk else None, condition_filter=cond))
             elif path == '/' or path == '' or path == '/index.html':
                 self._serve_html()
             else:
