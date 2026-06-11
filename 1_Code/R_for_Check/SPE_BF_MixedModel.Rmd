@@ -1,0 +1,486 @@
+---
+title: "SPE Bayes Factor — Mixed-Model Analysis"
+subtitle: "假设：在不同实验空间参数下，任务中存在自我优势效应"
+author: "AI Assistant"
+date: "2026-06-08"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+if (!requireNamespace('pacman', quietly = TRUE)) install.packages('pacman')
+pacman::p_load(
+  tidyverse, BayesFactor, bruceR, ggplot2, cowplot, scales
+)
+options(scipen = 999)
+set.seed(42)
+```
+
+# 1. 研究假设
+
+> **H₁**: 在不同实验空间参数 (P, T, W) 下，**匹配试次中自我标签(self)比陌生人标签(stranger)具有更好的行为表现**——即自我优势效应 (SPE) 跨条件存在。
+>
+> **H₀**: 自我标签与陌生人标签之间没有差异（无 SPE）。
+
+**分析方法升级**：从简单的配对 t 检验 BF 升级为 **混合效应模型 BF**（`BayesFactor::lmBF`），将 Label (self/stranger) 作为固定效应，被试作为随机效应，同时控制组间差异。这直接对应"在不同实验空间参数下"这一限定条件。
+
+---
+
+# 2. 数据加载与预处理
+
+```{r load-data}
+raw_dir <- "../../2_Data/Real_Data/UnExtact/raw"
+csv_files <- list.files(raw_dir, pattern = "EXP_data_group.*\\.csv$", full.names = TRUE)
+
+df_raw <- map_dfr(csv_files, ~ read_csv(.x, show_col_types = FALSE, na = c("NA", "")))
+cat(sprintf("Total trials: %d | Unique subjects: %d\n", nrow(df_raw),
+            df_raw %>% distinct(groupID, subjectID) %>% nrow()))
+```
+
+```{r preprocess}
+# 1. 只保留 formal 阶段
+df <- df_raw %>% filter(stage == "formal")
+
+# 2. 识别 Matching 试次 (基于 mod(subjectID,2) 配对规则)
+df <- df %>% mutate(
+  is_matching = case_when(
+    subjectID %% 2 == 0 ~ (Shape == "square" & Label == "self")     | (Shape == "circle" & Label == "stranger"),
+    subjectID %% 2 == 1 ~ (Shape == "square" & Label == "stranger") | (Shape == "circle" & Label == "self"),
+    TRUE ~ FALSE
+  )
+)
+
+# 3. 仅保留 Matching 试次
+df_match <- df %>% filter(is_matching) %>%
+  mutate(
+    subj_idx   = paste0("G", groupID, "_S", subjectID),
+    Label      = factor(Label, levels = c("self", "stranger")),
+    groupID_f  = factor(paste0("G", groupID)),
+    Correct    = if_else(is.na(Correct), 0L, as.integer(Correct)),
+    is_omission = is.na(RT) | RT > (T + W + 0.5),
+    RT_ms      = RT * 1000
+  )
+
+cat(sprintf("Matching formal trials: %d\n", nrow(df_match)))
+```
+
+```{r data-summary}
+df_match %>%
+  group_by(groupID) %>%
+  summarise(
+    n_subj = n_distinct(subjectID), n_trials = n(),
+    omission_pct = round(mean(is_omission) * 100, 1),
+    acc = round(mean(Correct), 3),
+    rt  = round(mean(RT_ms[Correct == 1 & !is_omission]), 1),
+    .groups = "drop"
+  ) %>% print(n = 20)
+```
+
+# 3. 聚合到被试 × Label 水平
+
+```{r aggregate}
+# 每个被试在每个 Label 条件下的平均表现（trial-level → subject-level）
+df_subj <- df_match %>%
+  group_by(groupID, groupID_f, subj_idx, Label, P, T, W) %>%
+  summarise(
+    n_trials   = n(),
+    acc        = mean(Correct),
+    rt_mean    = mean(RT_ms[Correct == 1 & !is_omission], na.rm = TRUE),
+    omission   = mean(is_omission),
+    .groups    = "drop"
+  ) %>%
+  mutate(
+    subj_idx = factor(subj_idx),
+    Label    = factor(Label, levels = c("self", "stranger"))
+  )
+
+cat(sprintf("Subject × Label records: %d\n", nrow(df_subj)))
+```
+
+---
+
+# 4. 核心分析：Label 主效应的 BF（跨条件 SPE）
+
+> 使用 `lmBF` 构建混合效应模型，比较包含 Label 的模型与零模型。
+> 随机效应结构遵循 JASP 默认：包含随机截距和随机斜率。
+
+```{r bf-label-main}
+# ============================================================
+# 模型定义（JASP 风格：随机截距 + 随机斜率）
+# 零模型:    dv ~ 1 + subj_idx + groupID_f
+# Label模型: dv ~ 1 + subj_idx + groupID_f + Label + Label:subj_idx
+# ============================================================
+
+compute_label_bf <- function(data, dv = "acc") {
+  # 零模型公式
+  null_formula <- as.formula(paste(dv, "~ 1 + subj_idx + groupID_f"))
+  null_model <- lmBF(null_formula, data = data,
+                     whichRandom = "subj_idx",
+                     rscaleFixed = 0.5, rscaleRandom = 1, iterations = 10000)
+
+  # 包含 Label 主效应 + 随机斜率的模型
+  label_formula <- as.formula(paste(dv, "~ 1 + subj_idx + groupID_f + Label + Label:subj_idx"))
+  label_model <- lmBF(label_formula, data = data,
+                      whichRandom = "subj_idx",
+                      rscaleFixed = 0.5, rscaleRandom = 1, iterations = 10000)
+
+  bf_label <- extractBF(label_model / null_model)$bf
+  return(list(bf10 = bf_label, null = null_model, label = label_model))
+}
+
+# 4.1 正确率
+bf_result_acc <- compute_label_bf(df_subj, "acc")
+cat(sprintf("\n===== Label 主效应 BF (正确率) =====\n"))
+cat(sprintf("BF10 (Label) = %.2f\n", bf_result_acc$bf10))
+
+# 4.2 反应时
+df_rt <- df_subj %>% filter(!is.na(rt_mean))
+bf_result_rt <- compute_label_bf(df_rt, "rt_mean")
+cat(sprintf("\n===== Label 主效应 BF (反应时) =====\n"))
+cat(sprintf("BF10 (Label) = %.2f\n", bf_result_rt$bf10))
+```
+
+```{r bf-interpret}
+interpret_bf <- function(bf10) {
+  if (bf10 > 100) return("Decisive for H1 (SPE exists)")
+  else if (bf10 > 30) return("Very strong for H1")
+  else if (bf10 > 10) return("Strong for H1 — STOP criterion met")
+  else if (bf10 > 3)  return("Substantial for H1")
+  else if (bf10 > 1)  return("Anecdotal for H1")
+  else if (bf10 > 1/3) return("Anecdotal for H0")
+  else if (bf10 > 1/10) return("Substantial for H0")
+  else if (bf10 > 1/30) return("Strong for H0")
+  else return("Decisive for H0 (no SPE)")
+}
+
+cat(sprintf("\n正确率: %s\n", interpret_bf(bf_result_acc$bf10)))
+cat(sprintf("反应时: %s\n", interpret_bf(bf_result_rt$bf10)))
+```
+
+---
+
+# 5. 序贯分析：逐步增加被试时 Label 主效应 BF 的变化
+
+> 复现 `Function_bf_avo.R` 中的序贯计算逻辑，模拟实际收数据过程。
+
+```{r sequential}
+# ============================================================
+# 被试列表（随机排列模拟收数据顺序）
+# ============================================================
+all_subjects <- sample(unique(df_subj$subj_idx))
+
+compute_label_bf_fast <- function(data, dv = "acc", per_group = FALSE) {
+  # 组内分析时不包含 groupID_f（因子只有1水平，无法对比）
+  grp_term <- if (per_group) "" else " + groupID_f"
+  
+  null_formula <- as.formula(paste(dv, "~ 1 + subj_idx", grp_term))
+  null_model <- lmBF(null_formula, data = data,
+                     whichRandom = "subj_idx",
+                     rscaleFixed = 0.5, rscaleRandom = 1, iterations = 10000)
+  label_formula <- as.formula(paste(dv, "~ 1 + subj_idx", grp_term, " + Label + Label:subj_idx"))
+  label_model <- lmBF(label_formula, data = data,
+                      whichRandom = "subj_idx",
+                      rscaleFixed = 0.5, rscaleRandom = 1, iterations = 10000)
+  extractBF(label_model / null_model)$bf
+}
+
+# 序贯计算（从第 10 个被试开始，因为 <10 时随机效应估计不稳定）
+n_total <- length(all_subjects)
+seq_bf <- map_dfr(10:n_total, function(i) {
+  subj_i <- all_subjects[1:i]
+  data_i_acc <- df_subj %>% filter(subj_idx %in% subj_i)
+  data_i_rt  <- df_rt   %>% filter(subj_idx %in% subj_i)
+
+  bf_acc <- tryCatch(compute_label_bf_fast(data_i_acc, "acc"), error = function(e) NA_real_)
+  bf_rt  <- tryCatch(compute_label_bf_fast(data_i_rt, "rt_mean"), error = function(e) NA_real_)
+
+  data.frame(n = i, n_subjects = i, BF10_acc = bf_acc, BF10_rt = bf_rt)
+})
+
+# 首次达到阈值
+first_threshold <- function(bf_vec, thresh) {
+  idx <- which(bf_vec >= thresh); if (length(idx) == 0) NA_integer_ else seq_bf$n[idx[1]]
+}
+
+cat("\n===== 序贯分析结果 =====\n")
+cat(sprintf("BF10_acc >= 10  at N = %s\n",
+            ifelse(is.na(first_threshold(seq_bf$BF10_acc, 10)), "never reached", first_threshold(seq_bf$BF10_acc, 10))))
+cat(sprintf("BF10_rt  >= 10  at N = %s\n",
+            ifelse(is.na(first_threshold(seq_bf$BF10_rt, 10)), "never reached", first_threshold(seq_bf$BF10_rt, 10))))
+cat(sprintf("BF10_acc <= 0.1 at N = %s\n",
+            ifelse(is.na(first_threshold(1/seq_bf$BF10_acc, 10)), "never reached", first_threshold(1/seq_bf$BF10_acc, 10))))
+cat(sprintf("BF10_rt  <= 0.1 at N = %s\n",
+            ifelse(is.na(first_threshold(1/seq_bf$BF10_rt, 10)), "never reached", first_threshold(1/seq_bf$BF10_rt, 10))))
+```
+
+```{r sequential-fig, fig.width=12, fig.height=5}
+plot_seq <- function(seq_df, y_var, title, color) {
+  ggplot(seq_df, aes(x = n)) +
+    geom_hline(yintercept = 1,  linetype = "dashed", color = "gray50") +
+    geom_hline(yintercept = 10, linetype = "dotted", color = "darkgreen") +
+    geom_hline(yintercept = 1/10, linetype = "dotted", color = "darkred") +
+    geom_line(aes(y = .data[[y_var]]), color = color, linewidth = 1.2) +
+    geom_point(aes(y = .data[[y_var]]), color = color, size = 1.5) +
+    annotate("text", x = max(seq_df$n) - 5, y = 15, label = "H1 threshold (10)", color = "darkgreen", size = 3, hjust = 1) +
+    annotate("text", x = max(seq_df$n) - 5, y = 0.07, label = "H0 threshold (0.1)", color = "darkred", size = 3, hjust = 1) +
+    scale_y_log10(
+      breaks = c(0.01, 0.1, 1, 10, 100),
+      labels = c("0.01\n(Strong H0)", "0.1\n(Stop H0)", "1\n(Equivocal)", "10\n(Stop H1)", "100\n(Strong H1)")
+    ) +
+    labs(title = title, x = "Cumulative number of subjects", y = "BF10 (log scale)") +
+    theme_minimal(base_size = 12)
+}
+
+p1 <- plot_seq(seq_bf, "BF10_acc", "Sequential BF10 — Label Effect on Accuracy", "steelblue")
+p2 <- plot_seq(seq_bf, "BF10_rt",  "Sequential BF10 — Label Effect on RT",       "firebrick")
+cowplot::plot_grid(p1, p2, ncol = 2)
+```
+
+---
+
+# 6. 分组分析：每组内部的 Label 主效应 BF
+
+> 在每个实验条件内独立检验 SPE，回答"在哪个参数组合下 SPE 有稳定证据"
+
+```{r bf-per-group}
+cat("\n===== 各组内 Label 主效应 BF =====\n")
+
+groups <- sort(unique(df_subj$groupID))
+group_bf_results <- map_dfr(groups, function(g) {
+  d_g <- df_subj %>% filter(groupID == g)
+  d_g$subj_idx <- factor(d_g$subj_idx)
+
+  bf_acc <- tryCatch(compute_label_bf_fast(d_g, "acc", per_group = TRUE), error = function(e) NA_real_)
+
+  d_rt_g <- d_g %>% filter(!is.na(rt_mean))
+  bf_rt  <- tryCatch(compute_label_bf_fast(d_rt_g, "rt_mean", per_group = TRUE), error = function(e) NA_real_)
+
+  data.frame(
+    groupID    = g,
+    n_subjects = n_distinct(d_g$subj_idx),
+    acc_self   = mean(d_g$acc[d_g$Label == "self"]),
+    acc_stranger = mean(d_g$acc[d_g$Label == "stranger"]),
+    BF10_acc   = bf_acc,
+    rt_self    = mean(d_g$rt_mean[d_g$Label == "self"], na.rm = TRUE),
+    rt_stranger = mean(d_g$rt_mean[d_g$Label == "stranger"], na.rm = TRUE),
+    BF10_rt    = bf_rt
+  )
+})
+
+print(group_bf_results, n = 20)
+```
+
+```{r bf-per-group-fig, fig.width=12, fig.height=6}
+# 各组 BF 可视化
+group_bf_long <- group_bf_results %>%
+  pivot_longer(c(BF10_acc, BF10_rt), names_to = "measure", values_to = "BF10") %>%
+  mutate(
+    measure = recode(measure, BF10_acc = "Accuracy", BF10_rt = "RT"),
+    group_label = paste0("G", groupID, " (N=", n_subjects, ")")
+  )
+
+ggplot(group_bf_long, aes(x = group_label, y = BF10, fill = measure)) +
+  geom_col(position = position_dodge(0.7), width = 0.6, color = "black", linewidth = 0.3) +
+  geom_hline(yintercept = 1,  linetype = "dashed", color = "gray50") +
+  geom_hline(yintercept = 10, linetype = "dotted", color = "darkgreen") +
+  geom_hline(yintercept = 1/10, linetype = "dotted", color = "darkred") +
+  scale_y_log10() +
+  scale_fill_manual(values = c("Accuracy" = "steelblue", "RT" = "firebrick")) +
+  labs(title = "Per-Group Label Effect BF10", x = "", y = "BF10 (log scale)", fill = "Measure") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1, size = 9))
+```
+
+---
+
+# 7. Label × Group 交互作用的 BF
+
+> 检验 SPE 的强度是否随实验条件而变化（即设计参数是否调节 SPE）
+
+```{r bf-interaction}
+# ============================================================
+# 模型比较:
+#   主效应模型: dv ~ subj_idx + groupID_f + Label + Label:subj_idx
+#   交互模型:   dv ~ subj_idx + groupID_f + Label * groupID_f + Label:subj_idx
+# ============================================================
+
+compute_interaction_bf <- function(data, dv = "acc") {
+  main_formula <- as.formula(paste(dv, "~ 1 + subj_idx + groupID_f + Label + Label:subj_idx"))
+  main_model <- lmBF(main_formula, data = data,
+                     whichRandom = "subj_idx",
+                     rscaleFixed = 0.5, rscaleRandom = 1, iterations = 10000)
+
+  int_formula <- as.formula(paste(dv, "~ 1 + subj_idx + groupID_f + Label * groupID_f + Label:subj_idx"))
+  int_model <- lmBF(int_formula, data = data,
+                    whichRandom = "subj_idx",
+                    rscaleFixed = 0.5, rscaleRandom = 1, iterations = 10000)
+
+  extractBF(int_model / main_model)$bf
+}
+
+bf_int_acc <- compute_interaction_bf(df_subj, "acc")
+bf_int_rt  <- compute_interaction_bf(df_rt, "rt_mean")
+
+cat(sprintf("\n===== Label × Group 交互 BF =====\n"))
+cat(sprintf("正确率交互 BF10 = %.2f  (%s)\n", bf_int_acc,
+            ifelse(bf_int_acc > 3, "SPE varies by condition",
+                   ifelse(bf_int_acc > 1/3, "Inconclusive",
+                          "SPE consistent across conditions"))))
+cat(sprintf("反应时交互 BF10 = %.2f  (%s)\n", bf_int_rt,
+            ifelse(bf_int_rt > 3, "SPE varies by condition",
+                   ifelse(bf_int_rt > 1/3, "Inconclusive",
+                          "SPE consistent across conditions"))))
+```
+
+---
+
+# 8. 综合可视化
+
+```{r dashboard, fig.width=14, fig.height=10}
+# Panel A: 各 Label 条件下的正确率和 RT 分布
+p_a <- df_subj %>%
+  ggplot(aes(x = Label, y = acc, fill = Label)) +
+  geom_violin(alpha = 0.5, draw_quantiles = 0.5) +
+  geom_jitter(width = 0.1, alpha = 0.3, size = 0.8) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.5, color = "red", linewidth = 0.8) +
+  facet_wrap(~ groupID_f, nrow = 2) +
+  scale_fill_manual(values = c("self" = "#e74c3c", "stranger" = "#3498db")) +
+  labs(title = "Accuracy by Label, per Group", y = "Accuracy") +
+  theme_minimal(base_size = 11) + theme(legend.position = "none")
+
+# Panel B: 各组 SPE 均值 ± SE
+spe_summary <- df_subj %>%
+  pivot_wider(id_cols = c(groupID, groupID_f, subj_idx),
+              names_from = Label, values_from = c(acc, rt_mean)) %>%
+  mutate(SPE_acc = acc_self - acc_stranger,
+         SPE_rt  = rt_mean_self - rt_mean_stranger) %>%
+  group_by(groupID_f) %>%
+  summarise(
+    m_acc = mean(SPE_acc), se_acc = sd(SPE_acc) / sqrt(n()),
+    m_rt  = mean(SPE_rt, na.rm = TRUE), se_rt = sd(SPE_rt, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+p_b <- ggplot(spe_summary, aes(x = groupID_f)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_pointrange(aes(y = m_acc, ymin = m_acc - se_acc, ymax = m_acc + se_acc),
+                  color = "steelblue", size = 0.8, linewidth = 1) +
+  labs(title = "SPE Accuracy (self - stranger) by Group", x = "", y = "SPE (accuracy diff)") +
+  theme_minimal(base_size = 11)
+
+p_c <- ggplot(spe_summary, aes(x = groupID_f)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_pointrange(aes(y = m_rt, ymin = m_rt - se_rt, ymax = m_rt + se_rt),
+                  color = "firebrick", size = 0.8, linewidth = 1) +
+  labs(title = "SPE RT (self - stranger, ms) by Group",
+       x = "", y = "SPE (RT diff, ms)") +
+  theme_minimal(base_size = 11)
+
+# Panel D: BF summary
+bf_summary <- bind_rows(
+  data.frame(Analysis = "Label main (ACC)",   BF10 = bf_result_acc$bf10, Type = "Main"),
+  data.frame(Analysis = "Label main (RT)",     BF10 = bf_result_rt$bf10,  Type = "Main"),
+  data.frame(Analysis = "Label × Group (ACC)", BF10 = bf_int_acc,         Type = "Interaction"),
+  data.frame(Analysis = "Label × Group (RT)",  BF10 = bf_int_rt,          Type = "Interaction")
+)
+
+p_d <- ggplot(bf_summary, aes(x = Analysis, y = BF10, fill = Type)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = sprintf("%.2f", BF10)), vjust = -0.3, size = 3.5) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+  scale_fill_manual(values = c("Main" = "#2ecc71", "Interaction" = "#f39c12")) +
+  labs(title = "Bayes Factor Summary", y = "BF10") +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 9))
+
+cowplot::plot_grid(
+  cowplot::plot_grid(p_a, p_d, ncol = 2, rel_widths = c(1.2, 1)),
+  cowplot::plot_grid(p_b, p_c, ncol = 2),
+  ncol = 1, rel_heights = c(1.3, 1)
+)
+```
+
+---
+
+# 9. 结果汇总
+
+```{r final-summary}
+bf_label_acc <- bf_result_acc$bf10
+bf_label_rt  <- bf_result_rt$bf10
+
+final <- data.frame(
+  Metric = c(
+    "总被试数",
+    "Matching 试次总数",
+    "核心假设",
+    "",
+    "Label 主效应 BF10 (正确率)",
+    "Label 主效应判断",
+    "Label 主效应 BF10 (反应时)",
+    "Label 主效应判断",
+    "",
+    "Label × Group 交互 BF10 (正确率)",
+    "Label × Group 交互 BF10 (反应时)",
+    "",
+    "序贯: BF10_acc 达到 10 所需 N",
+    "序贯: BF10_rt  达到 10 所需 N"
+  ),
+  Value = c(
+    n_distinct(df_subj$subj_idx),
+    nrow(df_match),
+    "在不同实验空间参数下，SPE 跨条件存在",
+    "",
+    sprintf("%.2f", bf_label_acc),
+    interpret_bf(bf_label_acc),
+    sprintf("%.2f", bf_label_rt),
+    interpret_bf(bf_label_rt),
+    "",
+    sprintf("%.2f", bf_int_acc),
+    sprintf("%.2f", bf_int_rt),
+    "",
+    ifelse(is.na(first_threshold(seq_bf$BF10_acc, 10)), "never", first_threshold(seq_bf$BF10_acc, 10)),
+    ifelse(is.na(first_threshold(seq_bf$BF10_rt, 10)), "never", first_threshold(seq_bf$BF10_rt, 10))
+  )
+)
+
+knitr::kable(final, caption = "SPE Mixed-Model BF Analysis — Final Results")
+```
+
+## 最终判断
+
+```{r final-interpretation}
+cat("\n===== 最终结论 =====\n\n")
+cat("研究假设: 在不同实验空间参数下，任务中存在自我优势效应\n\n")
+
+cat(sprintf("1. Label 主效应 (正确率): BF10 = %.2f → %s\n", bf_label_acc, interpret_bf(bf_label_acc)))
+cat(sprintf("2. Label 主效应 (反应时): BF10 = %.2f → %s\n", bf_label_rt, interpret_bf(bf_label_rt)))
+cat(sprintf("3. Label × Group 交互 (正确率): BF10 = %.2f\n", bf_int_acc))
+cat(sprintf("4. Label × Group 交互 (反应时): BF10 = %.2f\n", bf_int_rt))
+
+cat("\n---\n")
+if (bf_label_acc >= 10 || bf_label_rt >= 10) {
+  cat("→ 已满足序贯停止标准 (BF10 ≥ 10)：有 STRONG 证据支持 SPE 跨条件存在。\n")
+} else if (bf_label_acc >= 3 || bf_label_rt >= 3) {
+  cat("→ 有 SUBSTANTIAL 证据支持 SPE 跨条件存在，但尚未达到 STRONG 阈值。\n")
+  cat("  建议继续收数据直至 BF10 ≥ 10 或达到最大样本量。\n")
+} else if (bf_label_acc >= 1 || bf_label_rt >= 1) {
+  cat("→ 仅有 ANECDOTAL 证据支持 SPE，数据不足以定论。继续收数据。\n")
+} else if (bf_label_acc <= 1/10 || bf_label_rt <= 1/10) {
+  cat("→ BF 支持零假设 (无 SPE)。已满足序贯停止标准 (BF10 ≤ 0.1)。\n")
+} else {
+  cat("→ 证据在 Anecdotal 范围内，无法定论。继续收数据。\n")
+}
+
+if (bf_int_acc > 3) {
+  cat("→ 交互作用显著：SPE 的强度因实验条件而异，说明设计参数 (P/T/W) 调节 SPE。\n")
+} else if (bf_int_acc < 1/3) {
+  cat("→ 交互作用不显著：SPE 在不同条件下的强度一致。\n")
+} else {
+  cat("→ 交互作用证据不明确：无法判断 SPE 是否随条件变化。\n")
+}
+```
