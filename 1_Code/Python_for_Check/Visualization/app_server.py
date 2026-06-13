@@ -347,86 +347,175 @@ def cohens_d(group1, group2):
 def _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter="all"):
     """Compute per-subject SPE from trial rows with optional Matching/NonMatching filter.
 
+    Now supports ALL identity types (Self, Stranger, Close, Friend, Other, NonPerson, You, etc.),
+    computing SPE as: (comparison_identity - Self) for RT, (Self - comparison_identity) for ACC.
+
     Args:
         rows: list of csv dict rows
-        identity_col: column name for identity (Self/Stranger)
+        identity_col: column name for identity
         rt_col: column name for RT
         acc_col: column name for ACC (can be None)
         condition_filter: "all", "Matching", or "NonMatching"
 
     Returns:
-        dict with d_vals, acc_d_vals, self_rts_all, stranger_rts_all,
-             self_accs_all, stranger_accs_all, n_subjects, n_subjects_valid
+        dict with:
+          - identity_types: list of all unique identity values found
+          - per_identity: {identity: {rts: [...], accs: [...], n_subjects: int, n_subjects_with_enough: int}}
+          - comparisons: {identity: {spe_rt_d: [...], spe_acc_d: [...], n_valid: int, ...}}
+          - legacy: backward-compatible self/stranger dict
     """
     from collections import defaultdict
-    subj_data = defaultdict(lambda: {"Self": [], "Stranger": []})
-    subj_acc = defaultdict(lambda: {"Self": [], "Stranger": []})
+    # Discover all identity types
+    all_identities = set()
     has_matching_col = "Matching" in rows[0] if rows else False
+
+    # First pass: discover all identity values
+    for r in rows:
+        identity = r.get(identity_col, "").strip()
+        if not identity or identity.upper() == "NA":
+            continue
+        # apply condition filter for discovery
+        if condition_filter != "all" and has_matching_col:
+            trial_cond = r.get("Matching", "").strip()
+            if trial_cond.lower() != condition_filter.lower():
+                continue
+        if identity:
+            all_identities.add(identity)
+
+    identity_types = sorted(all_identities)
+
+    # Per-identity per-subject RT and ACC data
+    subj_rt = defaultdict(lambda: defaultdict(list))
+    subj_acc = defaultdict(lambda: defaultdict(list))
+    identity_n_subjects = defaultdict(set)
 
     for r in rows:
         sid = r.get("Subject", "")
-        identity = r.get(identity_col, "")
-        # Optional Matching/NonMatching filtering (normalize case: CSV may use "Nonmatching")
+        identity = r.get(identity_col, "").strip()
+        if not identity or identity.upper() == "NA":
+            continue
+
+        # Optional Matching/NonMatching filtering
         if condition_filter != "all" and has_matching_col:
             trial_cond = r.get("Matching", "").strip()
-            # Normalize comparison: lowercase both sides
             if trial_cond.lower() != condition_filter.lower():
                 continue
+
         try:
             rt_val = float(r.get(rt_col, ""))
         except (ValueError, TypeError):
             continue
-        if identity in ("Self",):
-            subj_data[sid]["Self"].append(rt_val)
-            if acc_col:
-                try:
-                    subj_acc[sid]["Self"].append(int(float(r.get(acc_col, 0))))
-                except (ValueError, TypeError):
-                    pass
-        elif identity in ("Stranger",):
-            subj_data[sid]["Stranger"].append(rt_val)
-            if acc_col:
-                try:
-                    subj_acc[sid]["Stranger"].append(int(float(r.get(acc_col, 0))))
-                except (ValueError, TypeError):
-                    pass
 
-    d_vals = []
-    acc_d_vals = []
-    self_rts_all = []
-    stranger_rts_all = []
-    self_accs_all = []
-    stranger_accs_all = []
+        subj_rt[sid][identity].append(rt_val)
+        identity_n_subjects[identity].add(sid)
 
-    for sid in subj_data:
-        self_rts = subj_data[sid]["Self"]
-        stranger_rts = subj_data[sid]["Stranger"]
-        if len(self_rts) >= 3 and len(stranger_rts) >= 3:
-            d = cohens_d(stranger_rts, self_rts)
-            d_vals.append(d)
-            self_rts_all.extend(self_rts)
-            stranger_rts_all.extend(stranger_rts)
-
-        self_ac = subj_acc[sid]["Self"]
-        stranger_ac = subj_acc[sid]["Stranger"]
-        if len(self_ac) >= 3 and len(stranger_ac) >= 3:
+        if acc_col:
             try:
-                acc_d = cohens_d(self_ac, stranger_ac)
-                acc_d_vals.append(acc_d)
-                self_accs_all.extend(self_ac)
-                stranger_accs_all.extend(stranger_ac)
-            except:
+                subj_acc[sid][identity].append(int(float(r.get(acc_col, 0))))
+            except (ValueError, TypeError):
                 pass
 
+    # Build per-identity aggregate data
+    per_identity = {}
+    for ident in identity_types:
+        rts_all = []
+        accs_all = []
+        for sid in subj_rt:
+            if ident in subj_rt[sid]:
+                rts_all.extend(subj_rt[sid][ident])
+            if ident in subj_acc[sid]:
+                accs_all.extend(subj_acc[sid][ident])
+
+        n_subs_with_data = sum(1 for sid in subj_rt if ident in subj_rt[sid] and len(subj_rt[sid][ident]) >= 3)
+        per_identity[ident] = {
+            "rts": rts_all,
+            "accs": accs_all,
+            "n_subjects": len(identity_n_subjects.get(ident, set())),
+            "n_subjects_with_enough": n_subs_with_data,
+            "mean_rt": round(statistics.mean(rts_all), 1) if rts_all else None,
+            "mean_acc": round(statistics.mean(accs_all), 4) if accs_all else None,
+            "sd_rt": round(statistics.stdev(rts_all), 1) if len(rts_all) >= 2 else None,
+            "sd_acc": round(statistics.stdev(accs_all), 4) if len(accs_all) >= 2 else None,
+        }
+
+    # Compute Self vs each other identity (SPE)
+    comparisons = {}
+    if "Self" in identity_types:
+        self_present = True
+    else:
+        self_present = False
+        # Try to find the closest to "Self" (case-insensitive)
+        for it in identity_types:
+            if it.lower() == "self":
+                self_present = it
+                break
+
+    if self_present:
+        self_key = self_present if isinstance(self_present, str) else "Self"
+        for other_ident in identity_types:
+            if other_ident == self_key:
+                continue
+            comp_d_vals = []
+            comp_acc_d_vals = []
+            for sid in subj_rt:
+                self_rts = subj_rt[sid].get(self_key, [])
+                other_rts = subj_rt[sid].get(other_ident, [])
+                if len(self_rts) >= 3 and len(other_rts) >= 3:
+                    d_rt = cohens_d(other_rts, self_rts)  # Other - Self
+                    comp_d_vals.append(d_rt)
+
+                self_ac = subj_acc[sid].get(self_key, [])
+                other_ac = subj_acc[sid].get(other_ident, [])
+                if len(self_ac) >= 3 and len(other_ac) >= 3:
+                    try:
+                        d_acc = cohens_d(self_ac, other_ac)  # Self - Other
+                        comp_acc_d_vals.append(d_acc)
+                    except:
+                        pass
+
+            comparisons[other_ident] = {
+                "spe_rt_d": round(statistics.mean(comp_d_vals), 4) if comp_d_vals else None,
+                "spe_rt_se": round(statistics.stdev(comp_d_vals) / math.sqrt(len(comp_d_vals)), 4) if len(comp_d_vals) >= 2 else None,
+                "spe_acc_d": round(statistics.mean(comp_acc_d_vals), 4) if comp_acc_d_vals else None,
+                "spe_acc_se": round(statistics.stdev(comp_acc_d_vals) / math.sqrt(len(comp_acc_d_vals)), 4) if len(comp_acc_d_vals) >= 2 else None,
+                "n_valid_subjects": len(comp_d_vals),
+            }
+
+    # Legacy backward-compatible fields (Self vs Stranger, or Self vs first non-Self)
+    legacy = {}
+    if self_present:
+        legacy["self_rts_all"] = per_identity.get(self_key, {}).get("rts", [])
+        primary_other = "Stranger" if "Stranger" in comparisons else (list(comparisons.keys())[0] if comparisons else None)
+        if primary_other:
+            legacy["d_vals"] = [d for d in [comparisons[primary_other]["spe_rt_d"]] if d is not None]
+            legacy["acc_d_vals"] = [d for d in [comparisons[primary_other]["spe_acc_d"]] if d is not None]
+            legacy["stranger_rts_all"] = per_identity.get(primary_other, {}).get("rts", [])
+            legacy["stranger_accs_all"] = per_identity.get(primary_other, {}).get("accs", [])
+            legacy["self_accs_all"] = per_identity.get(self_key, {}).get("accs", [])
+            legacy["n_subjects_valid"] = comparisons[primary_other].get("n_valid_subjects", 0)
+        else:
+            legacy["d_vals"] = []
+            legacy["acc_d_vals"] = []
+            legacy["stranger_rts_all"] = []
+            legacy["stranger_accs_all"] = []
+            legacy["self_accs_all"] = []
+            legacy["n_subjects_valid"] = 0
+    else:
+        legacy["d_vals"] = []
+        legacy["acc_d_vals"] = []
+        legacy["self_rts_all"] = []
+        legacy["stranger_rts_all"] = []
+        legacy["self_accs_all"] = []
+        legacy["stranger_accs_all"] = []
+        legacy["n_subjects_valid"] = 0
+
     return {
-        "d_vals": d_vals,
-        "acc_d_vals": acc_d_vals,
-        "self_rts_all": self_rts_all,
-        "stranger_rts_all": stranger_rts_all,
-        "self_accs_all": self_accs_all,
-        "stranger_accs_all": stranger_accs_all,
-        "n_subjects": len(subj_data),
-        "n_subjects_valid": len(d_vals),
+        "identity_types": identity_types,
+        "per_identity": per_identity,
+        "comparisons": comparisons,
+        "primary_comparison": "Stranger" if "Stranger" in comparisons else (list(comparisons.keys())[0] if comparisons else None),
+        "legacy": legacy,
+        "n_subjects": len(subj_rt),
     }
 
 
@@ -525,27 +614,36 @@ def load_spe_overview(condition_filter="all"):
             # Compute SPE for all conditions + matching + nonmatching
             result = _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter)
 
+            # Identity diversity info
+            exp["identity_types"] = result["identity_types"]
+            exp["identity_comparisons"] = result["comparisons"]
+            exp["primary_comparison"] = result["primary_comparison"]
+
+            # Legacy backward-compatible fields
+            l = result["legacy"]
             exp["n_subjects"] = result["n_subjects"]
-            exp["n_subjects_valid"] = result["n_subjects_valid"]
-            exp["spe_rt_d"] = round(statistics.mean(result["d_vals"]), 4) if result["d_vals"] else None
-            exp["spe_rt_se"] = round(statistics.stdev(result["d_vals"]) / math.sqrt(len(result["d_vals"])), 4) if len(result["d_vals"]) >= 2 else None
-            exp["spe_acc_d"] = round(statistics.mean(result["acc_d_vals"]), 4) if result["acc_d_vals"] else None
-            exp["spe_acc_se"] = round(statistics.stdev(result["acc_d_vals"]) / math.sqrt(len(result["acc_d_vals"])), 4) if len(result["acc_d_vals"]) >= 2 else None
-            exp["self_mean_rt"] = round(statistics.mean(result["self_rts_all"]), 1) if result["self_rts_all"] else None
-            exp["stranger_mean_rt"] = round(statistics.mean(result["stranger_rts_all"]), 1) if result["stranger_rts_all"] else None
-            exp["self_acc"] = round(statistics.mean(result["self_accs_all"]), 4) if result["self_accs_all"] else None
-            exp["stranger_acc"] = round(statistics.mean(result["stranger_accs_all"]), 4) if result["stranger_accs_all"] else None
+            exp["spe_rt_d"] = round(statistics.mean(l["d_vals"]), 4) if l["d_vals"] else None
+            exp["spe_rt_se"] = round(statistics.stdev(l["d_vals"]) / math.sqrt(len(l["d_vals"])), 4) if len(l["d_vals"]) >= 2 else None
+            exp["spe_acc_d"] = round(statistics.mean(l["acc_d_vals"]), 4) if l["acc_d_vals"] else None
+            exp["spe_acc_se"] = round(statistics.stdev(l["acc_d_vals"]) / math.sqrt(len(l["acc_d_vals"])), 4) if len(l["acc_d_vals"]) >= 2 else None
+            exp["self_mean_rt"] = round(statistics.mean(l["self_rts_all"]), 1) if l["self_rts_all"] else None
+            exp["stranger_mean_rt"] = round(statistics.mean(l["stranger_rts_all"]), 1) if l["stranger_rts_all"] else None
+            exp["self_acc"] = round(statistics.mean(l["self_accs_all"]), 4) if l["self_accs_all"] else None
+            exp["stranger_acc"] = round(statistics.mean(l["stranger_accs_all"]), 4) if l["stranger_accs_all"] else None
+            exp["n_subjects_valid"] = l["n_subjects_valid"]
 
             # Always compute Matching-only and NonMatching-only SPE for frontend toggle
             try:
                 result_m = _compute_subject_spe(rows, identity_col, rt_col, acc_col, "Matching")
                 result_nm = _compute_subject_spe(rows, identity_col, rt_col, acc_col, "NonMatching")
-                exp["spe_rt_d_matching"] = round(statistics.mean(result_m["d_vals"]), 4) if result_m["d_vals"] else None
-                exp["spe_acc_d_matching"] = round(statistics.mean(result_m["acc_d_vals"]), 4) if result_m["acc_d_vals"] else None
-                exp["spe_rt_d_nonmatch"] = round(statistics.mean(result_nm["d_vals"]), 4) if result_nm["d_vals"] else None
-                exp["spe_acc_d_nonmatch"] = round(statistics.mean(result_nm["acc_d_vals"]), 4) if result_nm["acc_d_vals"] else None
-                exp["n_valid_matching"] = len(result_m["d_vals"])
-                exp["n_valid_nonmatch"] = len(result_nm["d_vals"])
+                lm = result_m["legacy"]
+                lnm = result_nm["legacy"]
+                exp["spe_rt_d_matching"] = round(statistics.mean(lm["d_vals"]), 4) if lm["d_vals"] else None
+                exp["spe_acc_d_matching"] = round(statistics.mean(lm["acc_d_vals"]), 4) if lm["acc_d_vals"] else None
+                exp["spe_rt_d_nonmatch"] = round(statistics.mean(lnm["d_vals"]), 4) if lnm["d_vals"] else None
+                exp["spe_acc_d_nonmatch"] = round(statistics.mean(lnm["acc_d_vals"]), 4) if lnm["acc_d_vals"] else None
+                exp["n_valid_matching"] = lm["n_subjects_valid"]
+                exp["n_valid_nonmatch"] = lnm["n_subjects_valid"]
             except Exception as e:
                 exp["spe_rt_d_matching"] = None
                 exp["spe_acc_d_matching"] = None
@@ -625,21 +723,15 @@ def load_spe_experiment_detail(pair_key, condition_filter="all"):
         # Use helper function to compute SPE with condition filter
         result = _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter)
 
-        subjects = []
-        all_self_rt = result["self_rts_all"]
-        all_stranger_rt = result["stranger_rts_all"]
-        all_self_acc = result["self_accs_all"]
-        all_stranger_acc = result["stranger_accs_all"]
-
-        # Rebuild subj_data for per-subject detail display
-        sq = _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter)
-        # Actually need per-subject breakdown - rebuild directly
-        subj_data2 = defaultdict(lambda: {"Self": [], "Stranger": []})
-        subj_acc2 = defaultdict(lambda: {"Self": [], "Stranger": []})
+        # Per-subject breakdown for all identity types
         has_matching_col = "Matching" in rows[0] if rows else False
+        subj_data2 = defaultdict(lambda: defaultdict(list))
+        subj_acc2 = defaultdict(lambda: defaultdict(list))
         for r in rows:
             sid = r.get("Subject", "")
-            identity = r.get(identity_col, "")
+            identity = r.get(identity_col, "").strip()
+            if not identity or identity.upper() == "NA":
+                continue
             if condition_filter != "all" and has_matching_col:
                 trial_cond = r.get("Matching", "").strip()
                 if trial_cond.lower() != condition_filter.lower():
@@ -648,63 +740,192 @@ def load_spe_experiment_detail(pair_key, condition_filter="all"):
                 rt_val = float(r.get(rt_col, ""))
             except (ValueError, TypeError):
                 continue
-            if identity in ("Self",):
-                subj_data2[sid]["Self"].append(rt_val)
-                if acc_col:
-                    try:
-                        subj_acc2[sid]["Self"].append(int(float(r.get(acc_col, 0))))
-                    except (ValueError, TypeError):
-                        pass
-            elif identity in ("Stranger",):
-                subj_data2[sid]["Stranger"].append(rt_val)
-                if acc_col:
-                    try:
-                        subj_acc2[sid]["Stranger"].append(int(float(r.get(acc_col, 0))))
-                    except (ValueError, TypeError):
-                        pass
+            subj_data2[sid][identity].append(rt_val)
+            if acc_col:
+                try:
+                    subj_acc2[sid][identity].append(int(float(r.get(acc_col, 0))))
+                except (ValueError, TypeError):
+                    pass
 
+        # Build per-subject SPE with all available identity comparisons
+        self_key = "Self"
+        primary_other = result["primary_comparison"]
+        subjects = []
         for sid in sorted(subj_data2.keys(), key=lambda x: (x.isdigit(), x)):
-            self_rts = subj_data2[sid]["Self"]
-            stranger_rts = subj_data2[sid]["Stranger"]
-            self_ac = subj_acc2[sid]["Self"]
-            stranger_ac = subj_acc2[sid]["Stranger"]
+            sid_data = subj_data2[sid]
+            sid_acc = subj_acc2[sid]
+            # Per-identity RT/ACC
+            identity_stats = {}
+            for ident in sid_data:
+                rts = sid_data[ident]
+                acs = sid_acc.get(ident, [])
+                identity_stats[ident] = {
+                    "n": len(rts),
+                    "mean_rt": round(statistics.mean(rts), 1) if rts else None,
+                    "sd_rt": round(statistics.stdev(rts), 1) if len(rts) >= 2 else None,
+                    "mean_acc": round(statistics.mean(acs), 4) if acs else None,
+                }
+            # SPE for primary comparison
+            self_rts = sid_data.get(self_key, [])
+            other_rts = sid_data.get(primary_other, []) if primary_other else []
+            self_ac = sid_acc.get(self_key, [])
+            other_ac = sid_acc.get(primary_other, []) if primary_other else []
+            d_rt = cohens_d(other_rts, self_rts) if len(self_rts) >= 3 and len(other_rts) >= 3 else None
+            d_acc = cohens_d(self_ac, other_ac) if len(self_ac) >= 3 and len(other_ac) >= 3 else None
 
-            d_rt = cohens_d(stranger_rts, self_rts) if len(self_rts) >= 3 and len(stranger_rts) >= 3 else None
-            d_acc = cohens_d(self_ac, stranger_ac) if len(self_ac) >= 3 and len(stranger_ac) >= 3 else None
+            # SPE for all other identity comparisons
+            all_spe = {}
+            for other_ident in sid_data:
+                if other_ident == self_key:
+                    continue
+                o_rts = sid_data[other_ident]
+                o_ac = sid_acc.get(other_ident, [])
+                spe_rt = cohens_d(o_rts, self_rts) if len(self_rts) >= 3 and len(o_rts) >= 3 else None
+                spe_acc = cohens_d(self_ac, o_ac) if len(self_ac) >= 3 and len(o_ac) >= 3 else None
+                all_spe[other_ident] = {"spe_rt_d": round(spe_rt, 4) if spe_rt is not None else None,
+                                          "spe_acc_d": round(spe_acc, 4) if spe_acc is not None else None}
 
             subjects.append({
                 "subjectID": sid,
-                "n_self": len(self_rts),
-                "n_stranger": len(stranger_rts),
-                "self_mean_rt": round(statistics.mean(self_rts), 1) if self_rts else None,
-                "stranger_mean_rt": round(statistics.mean(stranger_rts), 1) if stranger_rts else None,
-                "self_rt_sd": round(statistics.stdev(self_rts), 1) if len(self_rts) >= 2 else None,
-                "stranger_rt_sd": round(statistics.stdev(stranger_rts), 1) if len(stranger_rts) >= 2 else None,
-                "self_acc": round(statistics.mean(self_ac), 4) if self_ac else None,
-                "stranger_acc": round(statistics.mean(stranger_ac), 4) if stranger_ac else None,
+                "identity_stats": identity_stats,
+                "self_mean_rt": identity_stats.get(self_key, {}).get("mean_rt"),
+                primary_other + "_mean_rt": identity_stats.get(primary_other, {}).get("mean_rt") if primary_other else None,
                 "spe_rt_d": round(d_rt, 4) if d_rt is not None else None,
                 "spe_acc_d": round(d_acc, 4) if d_acc is not None else None,
+                "all_spe": all_spe,
             })
 
         subjects.sort(key=lambda s: s["spe_rt_d"] if s["spe_rt_d"] is not None else -999, reverse=True)
 
-        overall_d = cohens_d(all_self_rt, all_stranger_rt) if len(all_self_rt) >= 2 and len(all_stranger_rt) >= 2 else None
-
+        # Legacy overall fields
+        l = result["legacy"]
         return {
             "pairKey": pair_key,
             "meta": exp_meta,
             "n_subjects": len(subjects),
             "n_total_trials": len(rows),
-            "overall_spe_rt_d": round(overall_d, 4) if overall_d is not None else None,
-            "overall_self_mean_rt": round(statistics.mean(all_self_rt), 1) if all_self_rt else None,
-            "overall_stranger_mean_rt": round(statistics.mean(all_stranger_rt), 1) if all_stranger_rt else None,
-            "overall_self_acc": round(statistics.mean(all_self_acc), 4) if all_self_acc else None,
-            "overall_stranger_acc": round(statistics.mean(all_stranger_acc), 4) if all_stranger_acc else None,
+            "identity_types": result["identity_types"],
+            "identity_comparisons": result["comparisons"],
+            "primary_comparison": result["primary_comparison"],
+            "overall_spe_rt_d": round(statistics.mean(l["d_vals"]), 4) if l["d_vals"] else None,
+            "overall_self_mean_rt": round(statistics.mean(l["self_rts_all"]), 1) if l["self_rts_all"] else None,
+            "overall_stranger_mean_rt": round(statistics.mean(l["stranger_rts_all"]), 1) if l["stranger_rts_all"] else None,
+            "overall_self_acc": round(statistics.mean(l["self_accs_all"]), 4) if l["self_accs_all"] else None,
+            "overall_stranger_acc": round(statistics.mean(l["stranger_accs_all"]), 4) if l["stranger_accs_all"] else None,
             "subjects": subjects,
         }
 
     except Exception as e:
         return {"error": str(e)}
+
+
+def load_spe_trials(pair_key):
+    """Return raw trial rows for CRF analysis from SPE CSV."""
+    if not pair_key:
+        return {"error": "Missing pairKey parameter"}
+
+    log_file = SPE_DIR / "processing_log.csv"
+    output_file = None
+    if log_file.exists():
+        with open(log_file, 'r', encoding='utf-8-sig') as f:
+            for row in csv.DictReader(f):
+                if row.get("Pair_Key") == pair_key:
+                    output_file = row.get("Output_File", "")
+                    break
+
+    if not output_file:
+        return {"error": f"Experiment {pair_key} not found"}
+
+    sp_file = SPE_DIR / Path(output_file).name
+    if not sp_file.exists():
+        return {"error": f"Data file not found: {sp_file}"}
+
+    try:
+        rows = []
+        with open(sp_file, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for r in reader:
+                rows.append(r)
+
+        if not rows:
+            return {"trials": [], "n_total": 0}
+
+        # Detect column names
+        identity_col = None
+        rt_col = None
+        for col in rows[0].keys():
+            if col == "Label_Standardized_Identity":
+                identity_col = col
+                break
+            if identity_col is None and col in ("Label_Origin_Identity", "Shape_Standardized_Identity"):
+                identity_col = col
+        for col in rows[0].keys():
+            if col in ("RT_ms", "RT_sec"):
+                if rt_col is None or col == "RT_ms":
+                    rt_col = col
+
+        if not identity_col or not rt_col:
+            return {"error": "Cannot determine identity or RT column"}
+
+        # Extract lightweight trial records
+        trials = []
+        has_matching = "Matching" in rows[0]
+        has_acc = "ACC" in rows[0]
+        for r in rows:
+            try:
+                rt_val = float(r.get(rt_col, ""))
+            except (ValueError, TypeError):
+                continue  # skip trials without valid RT
+            if rt_val <= 0:
+                continue
+
+            trial = {
+                "Subject": r.get("Subject", ""),
+                "RT_ms": round(rt_val, 1),
+                "Identity": r.get(identity_col, ""),
+            }
+            if has_matching:
+                trial["Matching"] = r.get("Matching", "")
+            if has_acc:
+                try:
+                    trial["ACC"] = int(float(r.get("ACC", 0)))
+                except (ValueError, TypeError):
+                    trial["ACC"] = 0
+
+            trials.append(trial)
+
+        return {"trials": trials, "n_total": len(trials)}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def load_identity_summary():
+    """Aggregate identity type statistics across all SPE experiments.
+    Returns: list of unique identity types with experiment counts and descriptive stats.
+    """
+    from collections import defaultdict
+    overview = load_spe_overview()
+    identity_map = defaultdict(lambda: {"count": 0, "experiments": [], "total_subjects": 0})
+
+    for exp in overview.get("experiments", []):
+        identities = exp.get("identity_types", [])
+        for ident in identities:
+            identity_map[ident]["count"] += 1
+            identity_map[ident]["experiments"].append(exp["pairKey"])
+            identity_map[ident]["total_subjects"] += exp.get("n_subjects", 0)
+
+    result = []
+    for ident, data in sorted(identity_map.items(), key=lambda x: -x[1]["count"]):
+        result.append({
+            "identity": ident,
+            "n_experiments": data["count"],
+            "n_subjects_total": data["total_subjects"],
+            "experiments": data["experiments"][:10],  # first 10
+            "n_experiments_full": len(data["experiments"]),
+        })
+
+    return {"identity_summary": result, "total_experiments": overview.get("count", 0)}
 
 
 class AppHandler(http.server.BaseHTTPRequestHandler):
@@ -753,6 +974,11 @@ class AppHandler(http.server.BaseHTTPRequestHandler):
                 pk = params.get('key', [None])[0]
                 cond = params.get('condition', ['all'])[0]
                 self._json(load_spe_experiment_detail(unquote(pk) if pk else None, condition_filter=cond))
+            elif path == '/api/spe/trials':
+                pk = params.get('key', [None])[0]
+                self._json(load_spe_trials(unquote(pk) if pk else None))
+            elif path == '/api/spe/identity-summary':
+                self._json(load_identity_summary())
             elif path == '/' or path == '' or path == '/index.html':
                 self._serve_html()
             else:

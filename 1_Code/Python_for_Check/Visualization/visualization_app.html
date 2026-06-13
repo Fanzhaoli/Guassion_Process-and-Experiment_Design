@@ -5799,6 +5799,7 @@ async function init() {
 
 // ==================== TAB: SPE DATABASE ====================
 let _speData = null;
+let _speDataLoading = null;
 let _speDetailData = null;
 let _speCharts = [];
 let _speCondition = 'all';  // 'all' | 'Matching' | 'NonMatching'
@@ -5825,22 +5826,50 @@ function renderSPETab(lp, rp) {
   lp.innerHTML = `
     <div class="section-title">SPE 数据库 — P·T·W 与自我加工效应</div>
     <div style="font-size:0.78em;color:var(--text-secondary);margin-bottom:8px;line-height:1.5;">
-      60项实验的元分析级数据浏览。SPE<sub>RT</sub> = Stranger − Self (Cohen's d)，SPE<sub>ACC</sub> = Self − Stranger (Cohen's d)。
+      63项实验的元分析级数据浏览。SPE<sub>RT</sub> = Other − Self (Cohen's d)，SPE<sub>ACC</sub> = Self − Other (Cohen's d)。
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-      <span style="font-size:0.72em;color:var(--text-secondary);line-height:2;">条件:</span>
+    <!-- 条件筛选 -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center;">
+      <span style="font-size:0.72em;color:var(--text-secondary);white-space:nowrap;">Matching:</span>
       <button class="crf-mode-btn active" id="speCondAll" style="font-size:0.72em;padding:2px 8px;">全部</button>
       <button class="crf-mode-btn" id="speCondMatching" style="font-size:0.72em;padding:2px 8px;">Matching</button>
       <button class="crf-mode-btn" id="speCondNonMatch" style="font-size:0.72em;padding:2px 8px;">NonMatching</button>
     </div>
-    <div id="speBtnRow" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-      <button class="crf-mode-btn active" id="speBtnOverview" style="font-size:0.78em;">群体总览</button>
-      <button class="crf-mode-btn" id="speBtnPW" style="font-size:0.78em;">P vs SPE</button>
-      <button class="crf-mode-btn" id="speBtnTW" style="font-size:0.78em;">T·W vs SPE</button>
-      <button class="crf-mode-btn" id="speBtnIndividual" style="font-size:0.78em;">个体详情</button>
+    <!-- Identity类型筛选面板 -->
+    <div style="margin-bottom:6px;border:1px solid var(--border);border-radius:4px;padding:6px 8px;background:var(--bg-card);">
+      <div style="font-size:0.72em;color:var(--accent);margin-bottom:4px;font-weight:600;">📋 Identity 维度筛选</div>
+      <div id="speIdentityChips" style="display:flex;gap:4px;flex-wrap:wrap;min-height:20px;">
+        <span style="font-size:0.7em;color:var(--text-secondary);">加载中...</span>
+      </div>
     </div>
-    <div id="speFilterArea" style="font-size:0.75em;margin-bottom:8px;"></div>
-    <div id="speLeftDetail" style="overflow-y:auto;max-height:calc(100vh - 260px);"></div>
+    <!-- P/T/W范围筛选 -->
+    <div style="margin-bottom:6px;border:1px solid var(--border);border-radius:4px;padding:6px 8px;background:var(--bg-card);">
+      <div style="font-size:0.72em;color:var(--accent);margin-bottom:4px;font-weight:600;">📐 设计参数筛选</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">
+        <select id="speYearFilter" style="font-size:0.68em;padding:2px 4px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:3px;min-width:60px;">
+          <option value="all">年份:全部</option>
+        </select>
+        <select id="spePFilter" style="font-size:0.68em;padding:2px 4px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:3px;min-width:60px;">
+          <option value="all">P:全部</option>
+        </select>
+        <select id="speTFilter" style="font-size:0.68em;padding:2px 4px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:3px;min-width:60px;">
+          <option value="all">T:全部</option>
+        </select>
+        <select id="speWFilter" style="font-size:0.68em;padding:2px 4px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:3px;min-width:60px;">
+          <option value="all">W:全部</option>
+        </select>
+        <button id="speClearFilters" style="font-size:0.68em;padding:2px 6px;background:var(--bg-secondary);color:var(--text-secondary);border:1px solid var(--border);border-radius:3px;">清除</button>
+      </div>
+    </div>
+    <!-- 视图模式 -->
+    <div id="speBtnRow" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
+      <button class="crf-mode-btn active" id="speBtnOverview" style="font-size:0.72em;">群体总览</button>
+      <button class="crf-mode-btn" id="speBtnTable" style="font-size:0.72em;">📊 数据预览</button>
+      <button class="crf-mode-btn" id="speBtnPTW" style="font-size:0.72em;">P|T|W 联合</button>
+      <button class="crf-mode-btn" id="speBtnIndividual" style="font-size:0.72em;">个体详情</button>
+      <button class="crf-mode-btn" id="speBtnCRF" style="font-size:0.72em;background:#e91e63;border-color:#e91e63;">CRF分析</button>
+    </div>
+    <div id="speLeftDetail" style="overflow-y:auto;max-height:calc(100vh - 380px);"></div>
   `;
   rp.innerHTML = `
     <div id="speRightCharts" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;height:100%;">
@@ -5851,14 +5880,24 @@ function renderSPETab(lp, rp) {
   `;
 
   document.getElementById('speBtnOverview').addEventListener('click', () => switchSPEView('overview'));
-  document.getElementById('speBtnPW').addEventListener('click', () => switchSPEView('pw'));
-  document.getElementById('speBtnTW').addEventListener('click', () => switchSPEView('tw'));
+  document.getElementById('speBtnTable').addEventListener('click', () => switchSPEView('table'));
+  document.getElementById('speBtnPTW').addEventListener('click', () => switchSPEView('ptw'));
   document.getElementById('speBtnIndividual').addEventListener('click', () => switchSPEView('individual'));
+  document.getElementById('speBtnCRF').addEventListener('click', () => switchSPEView('crf'));
 
   document.getElementById('speCondAll').addEventListener('click', () => switchSPECondition('all'));
   document.getElementById('speCondMatching').addEventListener('click', () => switchSPECondition('Matching'));
   document.getElementById('speCondNonMatch').addEventListener('click', () => switchSPECondition('NonMatching'));
 
+  // Bind filter dropdowns
+  document.getElementById('speYearFilter').addEventListener('change', () => refreshSPEView());
+  document.getElementById('spePFilter').addEventListener('change', () => refreshSPEView());
+  document.getElementById('speTFilter').addEventListener('change', () => refreshSPEView());
+  document.getElementById('speWFilter').addEventListener('change', () => refreshSPEView());
+  document.getElementById('speClearFilters').addEventListener('click', () => clearSPEFilters());
+
+  // Load identity chips and populate dropdown filters
+  populateSPEFilters();
   switchSPEView('overview');
 }
 
@@ -5874,33 +5913,161 @@ function switchSPECondition(cond) {
 }
 
 function setSPEActiveBtn(id) {
-  ['speBtnOverview','speBtnPW','speBtnTW','speBtnIndividual'].forEach(bid => {
+  ['speBtnOverview','speBtnTable','speBtnPTW','speBtnIndividual','speBtnCRF'].forEach(bid => {
     const el = document.getElementById(bid); if (el) el.classList.remove('active');
   });
   const a = document.getElementById(id); if (a) a.classList.add('active');
 }
 
-async function ensureSPEData() {
-  if (_speData) return _speData;
-  const rp = document.getElementById('speRightCharts');
-  if (rp) rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:var(--accent);">⏳ 加载SPE数据库 (计算Cohen\'s d中...)</div>';
-  try {
-    _speData = await fetchAPI('/api/spe/overview');
-    return _speData;
-  } catch(e) {
-    if (rp) rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:#f44336;">加载失败: '+e.message+'</div>';
-    return null;
+// --- Filter state & identity selection ---
+let _speFilterState = { year: 'all', P: 'all', T: 'all', W: 'all', selectedIdentities: new Set() };
+
+async function populateSPEFilters() {
+  const data = await ensureSPEData();
+  if (!data || !data.experiments) return;
+
+  // Collect unique years, P, T, W values
+  const years = new Set(), pVals = new Set(), tVals = new Set(), wVals = new Set();
+  data.experiments.forEach(e => {
+    const year = (e.pairKey.match(/\d{4}/) || [])[0];
+    if (year) years.add(year);
+    if (e.P_ms !== null) pVals.add(e.P_ms);
+    if (e.T_ms !== null) tVals.add(e.T_ms);
+    if (e.W_ms !== null) wVals.add(e.W_ms);
+  });
+
+  function fillSelect(id, values) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    Array.from(values).sort((a,b) => a-b).forEach(v => {
+      const o = document.createElement('option'); o.value = v; o.textContent = id.startsWith('speYear') ? v : v+'ms';
+      sel.appendChild(o);
+    });
   }
+
+  // Preserve first option, clear rest
+  ['speYearFilter','spePFilter','speTFilter','speWFilter'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+  });
+
+  fillSelect('speYearFilter', years);
+  fillSelect('spePFilter', pVals);
+  fillSelect('speTFilter', tVals);
+  fillSelect('speWFilter', wVals);
+
+  // Load identity chips
+  const identitySummaryResp = await fetchAPI('/api/spe/identity-summary');
+  const idChips = document.getElementById('speIdentityChips');
+  if (!idChips || !identitySummaryResp || identitySummaryResp.error) return;
+  const identities = identitySummaryResp.identity_summary || [];
+  idChips.innerHTML = identities.map(ident => {
+    const color = ident.identity === 'Self' ? '#ff9800' : (ident.identity === 'Stranger' ? '#2196f3' : '#4caf50');
+    return `<span class="crf-filter-chip" data-identity="${ident.identity}" style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:10px;cursor:pointer;font-size:0.68em;background:var(--bg-hover);border:1px solid ${color};color:${color};opacity:0.6;" title="${ident.identity}: ${ident.n_experiments}实验, ${ident.n_subjects_total}被试">
+      ${ident.identity} (${ident.n_experiments})
+    </span>`;
+  }).join('');
+
+  // Identity chip click handlers
+  idChips.querySelectorAll('.crf-filter-chip').forEach(chip => {
+    const ident = chip.dataset.identity;
+    if (_speFilterState.selectedIdentities.has(ident)) {
+      chip.style.opacity = '1'; chip.style.background = withAlpha(chip.style.borderColor.replace('1px solid ',''), 0.2);
+    }
+    chip.addEventListener('click', () => {
+      if (_speFilterState.selectedIdentities.has(ident)) {
+        _speFilterState.selectedIdentities.delete(ident);
+        chip.style.opacity = '0.6'; chip.style.background = 'var(--bg-hover)';
+      } else {
+        _speFilterState.selectedIdentities.add(ident);
+        chip.style.opacity = '1'; chip.style.background = withAlpha(chip.style.borderColor.replace('1px solid ',''), 0.2);
+      }
+      refreshSPEView();
+    });
+  });
+}
+
+function getSPEFilteredExps(data) {
+  if (!data || !data.experiments) return [];
+  let exps = data.experiments;
+  const fs = _speFilterState;
+
+  if (fs.year !== 'all') exps = exps.filter(e => {
+    const y = (e.pairKey.match(/\d{4}/) || [])[0];
+    return y && y === fs.year;
+  });
+  if (fs.P !== 'all') exps = exps.filter(e => e.P_ms !== null && Math.abs(e.P_ms - parseFloat(fs.P)) < 0.01);
+  if (fs.T !== 'all') exps = exps.filter(e => e.T_ms !== null && Math.abs(e.T_ms - parseFloat(fs.T)) < 0.01);
+  if (fs.W !== 'all') exps = exps.filter(e => e.W_ms !== null && Math.abs(e.W_ms - parseFloat(fs.W)) < 0.01);
+
+  // Identity filter: experiment must contain ALL selected identity types
+  if (fs.selectedIdentities.size > 0) {
+    exps = exps.filter(e => {
+      const eIdentities = e.identity_types || [];
+      for (const si of fs.selectedIdentities) {
+        if (!eIdentities.includes(si)) return false;
+      }
+      return true;
+    });
+  }
+
+  return exps;
+}
+
+function getSPEFilterValues() {
+  return {
+    year: document.getElementById('speYearFilter')?.value || 'all',
+    P: document.getElementById('spePFilter')?.value || 'all',
+    T: document.getElementById('speTFilter')?.value || 'all',
+    W: document.getElementById('speWFilter')?.value || 'all',
+  };
+}
+
+function refreshSPEView() {
+  _speFilterState = getSPEFilterValues();
+  switchSPEView(_lastSPEView || 'overview');
+}
+
+function clearSPEFilters() {
+  _speFilterState = { year: 'all', P: 'all', T: 'all', W: 'all', selectedIdentities: new Set() };
+  ['speYearFilter','spePFilter','speTFilter','speWFilter'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = 'all';
+  });
+  // Reset identity chips
+  const chips = document.querySelectorAll('#speIdentityChips .crf-filter-chip');
+  chips.forEach(c => { c.style.opacity = '0.6'; c.style.background = 'var(--bg-hover)'; });
+  refreshSPEView();
 }
 
 function switchSPEView(view) {
   _lastSPEView = view;
+  _speFilterState = getSPEFilterValues();
   switch(view) {
     case 'overview': setSPEActiveBtn('speBtnOverview'); renderSPEOverview(); break;
-    case 'pw': setSPEActiveBtn('speBtnPW'); renderSPEPW(); break;
-    case 'tw': setSPEActiveBtn('speBtnTW'); renderSPETW(); break;
+    case 'table': setSPEActiveBtn('speBtnTable'); renderSPEDataTable(); break;
+    case 'ptw': setSPEActiveBtn('speBtnPTW'); renderSPEPTWIntegrated(); break;
     case 'individual': setSPEActiveBtn('speBtnIndividual'); renderSPEIndividual(); break;
+    case 'crf': setSPEActiveBtn('speBtnCRF'); renderSPECRF(); break;
   }
+}
+
+async function ensureSPEData() {
+  if (_speData) return _speData;
+  // Prevent duplicate API calls
+  if (_speDataLoading) return _speDataLoading;
+  const rp = document.getElementById('speRightCharts');
+  if (rp) rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:var(--accent);">⏳ 加载SPE数据库 (计算Cohen\'s d中...)</div>';
+  _speDataLoading = fetchAPI('/api/spe/overview').then(result => {
+    _speData = result;
+    _speDataLoading = null;
+    return result;
+  }).catch(e => {
+    _speDataLoading = null;
+    if (rp) rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:#f44336;">加载失败: '+e.message+'</div>';
+    return null;
+  });
+  return _speDataLoading;
 }
 
 // --- Group Overview ---
@@ -5908,9 +6075,10 @@ async function renderSPEOverview() {
   const data = await ensureSPEData();
   if (!data || !data.experiments) return;
   destroySPECharts();
-  const exps = data.experiments.filter(e => getSpeD(e) !== null);
+  const allExps = getSPEFilteredExps(data);
+  const exps = allExps.filter(e => getSpeD(e) !== null);
   const nValid = exps.length;
-  const nTotal = data.experiments.length;
+  const nTotal = allExps.length;
   const condLabel = _speCondition === 'Matching' ? ' (Matching)' : (_speCondition === 'NonMatching' ? ' (NonMatching)' : '');
   const rp = document.getElementById('speRightCharts');
   rp.innerHTML = `
@@ -5932,24 +6100,29 @@ async function renderSPEOverview() {
   const sdRT = Math.sqrt(varianceRT);
   const minRT = Math.min(...speRTValues);
   const maxRT = Math.max(...speRTValues);
-  
+
   document.getElementById('speOverviewStats').innerHTML = `
     SPE<sub>RT</sub> 均值=${meanRT.toFixed(3)}, SD=${sdRT.toFixed(3)}, 
     范围=[${minRT.toFixed(3)}, ${maxRT.toFixed(3)}]
+    ${allExps.length !== data.experiments.length ? `<br>当前筛选: ${allExps.length}/${data.experiments.length} 实验` : ''}
   `;
 
-  // Left panel: experiment list
+  // Left panel: experiment list with identity badges
   const ld = document.getElementById('speLeftDetail');
   ld.innerHTML = `
-    <div style="font-weight:600;margin-bottom:4px;">实验列表 (点击查看详情)</div>
-    <div style="max-height:calc(100vh - 300px);overflow-y:auto;">
-      ${data.experiments.map(e => {
+    <div style="font-weight:600;margin-bottom:4px;">实验列表 (点击查看详情) <span style="font-size:0.8em;color:var(--text-secondary);">${allExps.length}项</span></div>
+    <div style="max-height:calc(100vh - 420px);overflow-y:auto;">
+      ${allExps.map(e => {
         const d = getSpeD(e);
         const color = d === null ? '#888' : (d > 0 ? '#ff9800' : '#2196f3');
         const sign = d === null ? 'N/A' : (d > 0 ? '+' : '');
-        return `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.72em;display:flex;justify-content:space-between;">
-          <span>${e.pairKey}</span>
-          <span style="color:${color};font-weight:600;">${sign}${d !== null ? d.toFixed(3) : 'N/A'}</span>
+        const identChips = (e.identity_types || []).map(i => {
+          const ic = i === 'Self' ? '#ff9800' : (i === 'Stranger' ? '#2196f3' : '#4caf50');
+          return `<span style="display:inline-block;padding:0 3px;border-radius:3px;font-size:0.65em;background:${withAlpha(ic,0.15)};color:${ic};margin-right:2px;">${i}</span>`;
+        }).join('');
+        return `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.72em;display:flex;justify-content:space-between;align-items:center;">
+          <span style="flex:1;min-width:0;">${e.pairKey} <span style="font-size:0.85em;color:var(--text-secondary);">${identChips}</span></span>
+          <span style="color:${color};font-weight:600;flex-shrink:0;">${sign}${d !== null ? d.toFixed(3) : 'N/A'}</span>
         </div>`;
       }).join('')}
     </div>
@@ -5995,80 +6168,179 @@ function renderSPEHistogram(canvasId, values, label, color) {
   _speCharts.push(chart);
 }
 
-// --- P vs SPE ---
-async function renderSPEPW() {
+// --- Data Preview Table ---
+let _speTableSort = { key: 'pairKey', asc: true };
+let _speTablePage = 0;
+const _speTablePageSize = 15;
+
+async function renderSPEDataTable() {
+  const data = await ensureSPEData();
+  if (!data || !data.experiments) return;
+  destroySPECharts();
+  const allExps = getSPEFilteredExps(data);
+
+  const rp = document.getElementById('speRightCharts');
+  const ld = document.getElementById('speLeftDetail');
+
+  // Sort controls
+  const sortableKeys = ['pairKey', 'P_ms', 'T_ms', 'W_ms', 'n_subjects', 'spe_rt_d', 'spe_acc_d'];
+  ld.innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px;color:var(--accent);">数据预览 (${allExps.length}条)</div>
+    <div style="font-size:0.7em;color:var(--text-secondary);margin-bottom:4px;">点击列头排序 | 共${Math.ceil(allExps.length/_speTablePageSize)}页</div>
+    <div style="display:flex;gap:4px;margin-bottom:4px;">
+      ${sortableKeys.map(k => `<button class="spe-sort-btn" data-key="${k}" style="font-size:0.65em;padding:1px 5px;border:1px solid var(--border);border-radius:3px;background:var(--bg-secondary);color:var(--text-secondary);cursor:pointer;">${k}${_speTableSort.key===k ? (_speTableSort.asc?' ↑':' ↓') : ''}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:6px;">
+      <button id="speTablePrev" style="font-size:0.68em;padding:2px 6px;">◀</button>
+      <span style="font-size:0.68em;line-height:2;color:var(--text-secondary);">${_speTablePage+1}/${Math.ceil(allExps.length/_speTablePageSize)}</span>
+      <button id="speTableNext" style="font-size:0.68em;padding:2px 6px;">▶</button>
+    </div>
+    <div id="speTableInfo" style="font-size:0.65em;color:var(--text-secondary);margin-bottom:4px;"></div>
+  `;
+
+  document.querySelectorAll('.spe-sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      if (_speTableSort.key === key) { _speTableSort.asc = !_speTableSort.asc; }
+      else { _speTableSort.key = key; _speTableSort.asc = true; }
+      _speTablePage = 0;
+      renderSPEDataTable();
+    });
+  });
+  document.getElementById('speTablePrev').addEventListener('click', () => { _speTablePage = Math.max(0, _speTablePage-1); renderSPEDataTable(); });
+  document.getElementById('speTableNext').addEventListener('click', () => { _speTablePage = Math.min(Math.ceil(allExps.length/_speTablePageSize)-1, _speTablePage+1); renderSPEDataTable(); });
+
+  // Build table
+  const sorted = [...allExps].sort((a,b) => {
+    let va = a[_speTableSort.key], vb = b[_speTableSort.key];
+    if (va === null || va === undefined) va = '';
+    if (vb === null || vb === undefined) vb = '';
+    if (typeof va === 'number' && typeof vb === 'number') return _speTableSort.asc ? va - vb : vb - va;
+    return _speTableSort.asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+
+  const pageItems = sorted.slice(_speTablePage * _speTablePageSize, (_speTablePage + 1) * _speTablePageSize);
+  const matchCond = _speCondition;
+
+  rp.innerHTML = `
+    <div style="font-weight:600;color:var(--accent);margin-bottom:6px;">
+      📊 数据预览表格 — 设计空间参数与SPE效应量
+    </div>
+    <div style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 200px);">
+      <table style="width:100%;border-collapse:collapse;font-size:0.72em;">
+        <thead>
+          <tr style="background:var(--bg-secondary);position:sticky;top:0;z-index:1;">
+            <th style="padding:4px 6px;border-bottom:2px solid var(--border);text-align:left;">实验</th>
+            <th style="padding:4px 6px;border-bottom:2px solid var(--border);text-align:left;">P</th>
+            <th style="padding:4px 6px;border-bottom:2px solid var(--border);text-align:left;">T(ms)</th>
+            <th style="padding:4px 6px;border-bottom:2px solid var(--border);text-align:left;">W(ms)</th>
+            <th style="padding:4px 6px;border-bottom:2px solid var(--border);text-align:left;">Identity类型</th>
+            <th style="padding:4px 6px;border-bottom:2px solid var(--border);text-align:right;">N被试</th>
+            <th style="padding:4px 6px;border-bottom:2px solid var(--border);text-align:right;">SPE${matchCond==='Matching'?'_M':(matchCond==='NonMatching'?'_NM':'')} RT(d)</th>
+            <th style="padding:4px 6px;border-bottom:2px solid var(--border);text-align:right;">SPE${matchCond==='Matching'?'_M':(matchCond==='NonMatching'?'_NM':'')} ACC(d)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pageItems.map(e => {
+            const dRT = getSpeD(e);
+            const dACC = getSpeAccD(e);
+            const rtColor = dRT === null ? '#888' : (dRT > 0 ? '#ff9800' : '#2196f3');
+            const accColor = dACC === null ? '#888' : (dACC > 0 ? '#4caf50' : '#f44336');
+            const idTypes = (e.identity_types || []).join(', ');
+            return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" class="spe-exp-row" data-key="${e.pairKey}" onmouseenter="this.style.background='var(--bg-hover)'" onmouseleave="this.style.background=''">
+              <td style="padding:3px 6px;">${e.pairKey}</td>
+              <td style="padding:3px 6px;">${e.P_ms !== null ? e.P_ms : 'N/A'}</td>
+              <td style="padding:3px 6px;">${e.T_ms !== null ? e.T_ms : 'N/A'}</td>
+              <td style="padding:3px 6px;">${e.W_ms !== null ? e.W_ms : 'N/A'}</td>
+              <td style="padding:3px 6px;font-size:0.85em;color:var(--text-secondary);">${idTypes}</td>
+              <td style="padding:3px 6px;text-align:right;">${e.n_subjects||'N/A'}</td>
+              <td style="padding:3px 6px;text-align:right;color:${rtColor};font-weight:600;">${dRT !== null ? dRT.toFixed(3) : 'N/A'}</td>
+              <td style="padding:3px 6px;text-align:right;color:${accColor};font-weight:600;">${dACC !== null ? dACC.toFixed(3) : 'N/A'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  
+  rp.querySelectorAll('.spe-exp-row').forEach(row => {
+    row.addEventListener('click', () => {
+      switchSPEView('individual');
+      setTimeout(() => loadSPEDetail(row.dataset.key), 100);
+    });
+  });
+}
+
+// --- P|T|W Integrated View ---
+async function renderSPEPTWIntegrated() {
   const data = await ensureSPEData();
   if (!data) return;
   destroySPECharts();
-  const valid = data.experiments.filter(e => getSpeD(e) !== null && e.P_ms !== null);
+  const valid = getSPEFilteredExps(data);
+  const validP = valid.filter(e => getSpeD(e) !== null && e.P_ms !== null);
+  const validT = valid.filter(e => getSpeD(e) !== null && e.T_ms !== null);
+  const validW = valid.filter(e => getSpeD(e) !== null && e.W_ms !== null);
   const condLabel = _speCondition === 'Matching' ? ' (Matching)' : (_speCondition === 'NonMatching' ? ' (NonMatching)' : '');
+
   const rp = document.getElementById('speRightCharts');
   rp.innerHTML = `
-    <div style="font-weight:600;color:var(--accent);">P (练习试次) vs SPE${condLabel} (N=${valid.length})</div>
-    <div style="height:350px;"><canvas id="spePvRT"></canvas></div>
-    <div style="font-size:0.72em;color:var(--text-secondary);">P = 练习试次数 | SPE = Cohen's d (RT Stranger vs Self)</div>
+    <div style="font-weight:600;color:var(--accent);">P|T|W 设计空间与 SPE${condLabel} 联合分析</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;height:280px;"><canvas id="spePvRT"></canvas></div>
+      <div style="flex:1;min-width:220px;height:280px;"><canvas id="speTvRT"></canvas></div>
+      <div style="flex:1;min-width:220px;height:280px;"><canvas id="speWvRT"></canvas></div>
+    </div>
+    <div style="font-size:0.72em;color:var(--text-secondary);" id="spePtwStats"></div>
   `;
-  const scatterData = valid.map(e => ({x: e.P_ms, y: getSpeD(e), label: e.pairKey}));
-  renderSPEScatter('spePvRT', scatterData, 'P (trials)', 'SPE (RT d)', '#e91e63');
 
+  renderSPEScatterWithRegLine('spePvRT', validP.map(e => ({x: e.P_ms, y: getSpeD(e), label: e.pairKey})), 'P (trials)', 'SPE (RT d)', '#e91e63');
+  renderSPEScatterWithRegLine('speTvRT', validT.map(e => ({x: e.T_ms, y: getSpeD(e), label: e.pairKey})), 'T (刺激 ms)', 'SPE (RT d)', '#9c27b0');
+  renderSPEScatterWithRegLine('speWvRT', validW.map(e => ({x: e.W_ms, y: getSpeD(e), label: e.pairKey})), 'W (窗口 ms)', 'SPE (RT d)', '#2196f3');
+
+  // Compute correlation stats
+  const pCorr = pearsonR(validP.map(e=>e.P_ms), validP.map(e=>getSpeD(e)));
+  const tCorr = pearsonR(validT.map(e=>e.T_ms), validT.map(e=>getSpeD(e)));
+  const wCorr = pearsonR(validW.map(e=>e.W_ms), validW.map(e=>getSpeD(e)));
+
+  const pFit = linearFit(validP.map(e=>e.P_ms), validP.map(e=>getSpeD(e)));
+  const tFit = linearFit(validT.map(e=>e.T_ms), validT.map(e=>getSpeD(e)));
+  const wFit = linearFit(validW.map(e=>e.W_ms), validW.map(e=>getSpeD(e)));
+
+  document.getElementById('spePtwStats').innerHTML = `
+    P: r=${pCorr.toFixed(3)}${pFit ? `, 回归: y=${pFit.slope.toFixed(4)}x+${pFit.intercept.toFixed(3)}` : ''} | N=${validP.length} &nbsp;|&nbsp;
+    T: r=${tCorr.toFixed(3)}${tFit ? `, 回归: y=${tFit.slope.toFixed(4)}x+${tFit.intercept.toFixed(3)}` : ''} | N=${validT.length} &nbsp;|&nbsp;
+    W: r=${wCorr.toFixed(3)}${wFit ? `, 回归: y=${wFit.slope.toFixed(4)}x+${wFit.intercept.toFixed(3)}` : ''} | N=${validW.length}
+  `;
+
+  // Left panel: combined summaries
   const ld = document.getElementById('speLeftDetail');
+  const pGroups = {}; validP.forEach(e => { const k = e.P_ms; if (!pGroups[k]) pGroups[k] = []; pGroups[k].push(getSpeD(e)); });
+  const tGroups = {}; validT.forEach(e => { const k = e.T_ms; if (!tGroups[k]) tGroups[k] = []; tGroups[k].push(getSpeD(e)); });
+  const wGroups = {}; validW.forEach(e => { const k = e.W_ms; if (!wGroups[k]) wGroups[k] = []; wGroups[k].push(getSpeD(e)); });
   ld.innerHTML = `
-    <div style="font-weight:600;margin-bottom:4px;">P 参数统计</div>
-    <div style="font-size:0.75em;line-height:1.6;">
-      ${Array.from(new Set(valid.map(e=>e.P_ms))).sort((a,b)=>a-b).map(p => {
-        const subs = valid.filter(e=>e.P_ms===p);
-        const avgD = subs.reduce((s,e)=>s+getSpeD(e),0)/subs.length;
-        return `<div>P=${p}: N=${subs.length}, 平均SPE=${avgD.toFixed(3)}</div>`;
-      }).join('')}
+    <div style="font-weight:600;margin-bottom:6px;color:var(--accent);">P|T|W 参数摘要</div>
+    <div style="font-size:0.72em;line-height:1.6;max-height:calc(100vh - 400px);overflow-y:auto;">
+      <div style="font-weight:600;margin-bottom:2px;">P (练习试次)</div>
+      ${Object.entries(pGroups).sort((a,b)=>a[0]-b[0]).map(([p,ds]) => `<div>P=${p}: N=${ds.length}, 平均SPE=${(ds.reduce((s,v)=>s+v,0)/ds.length).toFixed(3)}, SE=${(Math.sqrt(ds.reduce((s,v)=>s+Math.pow(v-ds.reduce((a,b)=>a+b,0)/ds.length,2),0)/ds.length)/Math.sqrt(ds.length)).toFixed(3)}</div>`).join('')}
+      <div style="font-weight:600;margin-bottom:2px;margin-top:6px;">T (刺激时长 ms)</div>
+      ${Object.entries(tGroups).sort((a,b)=>a[0]-b[0]).map(([t,ds]) => `<div>T=${t}ms: N=${ds.length}, 平均SPE=${(ds.reduce((s,v)=>s+v,0)/ds.length).toFixed(3)}</div>`).join('')}
+      <div style="font-weight:600;margin-bottom:2px;margin-top:6px;">W (反应窗口 ms)</div>
+      ${Object.entries(wGroups).sort((a,b)=>a[0]-b[0]).map(([w,ds]) => `<div>W=${w}ms: N=${ds.length}, 平均SPE=${(ds.reduce((s,v)=>s+v,0)/ds.length).toFixed(3)}</div>`).join('')}
+      <div style="margin-top:6px;font-size:0.85em;color:var(--text-secondary);">注: SPE效应量使用各组内被试Cohen's d的均值</div>
     </div>
   `;
 }
 
-// --- T·W vs SPE ---
-async function renderSPETW() {
-  const data = await ensureSPEData();
-  if (!data) return;
-  destroySPECharts();
-  const validW = data.experiments.filter(e => getSpeD(e) !== null && e.W_ms !== null);
-  const validT = data.experiments.filter(e => getSpeD(e) !== null && e.T_ms !== null);
-  const condLabel = _speCondition === 'Matching' ? ' (Matching)' : (_speCondition === 'NonMatching' ? ' (NonMatching)' : '');
-  const rp = document.getElementById('speRightCharts');
-  rp.innerHTML = `
-    <div style="font-weight:600;color:var(--accent);">反应窗口 W 和刺激时长 T 与 SPE${condLabel} 的关系</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:320px;height:320px;"><canvas id="speWvRT"></canvas></div>
-      <div style="flex:1;min-width:320px;height:320px;"><canvas id="speTvRT"></canvas></div>
-    </div>
-    <div style="font-size:0.72em;color:var(--text-secondary);">
-      W = 反应窗口 (ms), T = 刺激呈现时间 (ms)<br>
-      红色虚线 = 线性回归趋势
-    </div>
-  `;
-  renderSPEScatter('speWvRT', validW.map(e => ({x: e.W_ms, y: getSpeD(e), label: e.pairKey})), 'W (反应窗口 ms)', 'SPE (RT d)', '#2196f3');
-  renderSPEScatter('speTvRT', validT.map(e => ({x: e.T_ms, y: getSpeD(e), label: e.pairKey})), 'T (刺激时长 ms)', 'SPE (RT d)', '#9c27b0');
-
-  // Summary stats
-  const ld = document.getElementById('speLeftDetail');
-  const wGroups = {};
-  validW.forEach(e => { const k = e.W_ms; if (!wGroups[k]) wGroups[k] = []; wGroups[k].push(getSpeD(e)); });
-  ld.innerHTML = `
-    <div style="font-weight:600;margin-bottom:4px;">W 窗口分析</div>
-    <div style="font-size:0.75em;line-height:1.6;">
-      <div><b>反应窗口与SPE相关性:</b> r=${pearsonR(validW.map(e=>e.W_ms), validW.map(e=>getSpeD(e))).toFixed(3)}</div>
-      ${Object.entries(wGroups).sort((a,b)=>a[0]-b[0]).map(([w,ds]) => {
-        const avg = ds.reduce((s,v)=>s+v,0)/ds.length;
-        return `<div>W=${w}ms: N=${ds.length}, 平均SPE=${avg.toFixed(3)}</div>`;
-      }).join('')}
-    </div>
-  `;
-}
-
-function renderSPEScatter(canvasId, points, xLabel, yLabel, color) {
+function renderSPEScatterWithRegLine(canvasId, points, xLabel, yLabel, color) {
   const canvas = document.getElementById(canvasId);
   if (!canvas || points.length < 2) return;
   const ctx = canvas.getContext('2d');
   const textColor = appState.theme === 'light' ? '#5a6c7d' : '#90a4ae';
   const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+
+  const xs = points.map(p => p.x), ys = points.map(p => p.y);
+  const fit = linearFit(xs, ys);
+  const corr = pearsonR(xs, ys);
 
   const datasets = [{
     label: yLabel,
@@ -6079,17 +6351,16 @@ function renderSPEScatter(canvasId, points, xLabel, yLabel, color) {
     pointHoverRadius: 8,
   }];
 
-  // Linear regression
-  const xs = points.map(p => p.x), ys = points.map(p => p.y);
-  const fit = linearFit(xs, ys);
+  // Linear regression line
   if (fit) {
     const xMin = Math.min(...xs), xMax = Math.max(...xs);
     datasets.push({
-      label: 'Linear trend',
+      label: `回归: y=${fit.slope.toFixed(4)}x${fit.intercept>=0?'+':''}${fit.intercept.toFixed(3)} (r=${corr.toFixed(3)})`,
       data: [{x: xMin, y: fit.slope*xMin+fit.intercept}, {x: xMax, y: fit.slope*xMax+fit.intercept}],
-      borderColor: withAlpha('#f44336', 0.6),
+      borderColor: withAlpha('#f44336', 0.7),
       backgroundColor: 'transparent',
-      pointRadius: 0, borderWidth: 1.5, borderDash: [6, 3], showLine: true,
+      pointRadius: 0, borderWidth: 2, borderDash: [6, 3], showLine: true,
+      pointHoverRadius: 0,
     });
   }
 
@@ -6099,13 +6370,18 @@ function renderSPEScatter(canvasId, points, xLabel, yLabel, color) {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: textColor, filter: item => !item.text.includes('trend') } },
+        legend: { 
+          labels: { color: textColor, font: { size: 10 }, boxWidth: 20 },
+        },
         tooltip: {
           callbacks: {
             label: ctx => {
-              if (ctx.dataset.label.includes('trend')) return '';
+              const ds = ctx.dataset;
+              if (ds.label && ds.label.startsWith('回归')) {
+                return ds.label;
+              }
               const p = points[ctx.dataIndex];
-              return p ? `${p.label}: ${xLabel}=${p.x}, SPE=${p.y.toFixed(3)}` : '';
+              return p ? `${p.label}: ${xLabel}=${p.x}, ${yLabel}=${p.y.toFixed(3)}` : '';
             }
           }
         }
@@ -6119,13 +6395,18 @@ function renderSPEScatter(canvasId, points, xLabel, yLabel, color) {
   _speCharts.push(chart);
 }
 
+// keep old renderSPEScatter for backward compat (used by individual detail if needed)
+function renderSPEScatter(canvasId, points, xLabel, yLabel, color) {
+  renderSPEScatterWithRegLine(canvasId, points, xLabel, yLabel, color);
+}
+
 // --- Individual Detail ---
 async function renderSPEIndividual() {
   const ld = document.getElementById('speLeftDetail');
   ld.innerHTML = `
     <div style="font-weight:600;margin-bottom:6px;">选择实验查看个体详情</div>
     <input type="text" id="speSearchInput" placeholder="搜索实验名称..." style="width:100%;font-size:0.8em;padding:4px 8px;margin-bottom:6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card);color:var(--text);">
-    <div id="speSearchResults" style="max-height:calc(100vh - 360px);overflow-y:auto;font-size:0.75em;"></div>
+    <div id="speSearchResults" style="max-height:calc(100vh - 460px);overflow-y:auto;font-size:0.75em;"></div>
   `;
   const searchInput = document.getElementById('speSearchInput');
   const resultsDiv = document.getElementById('speSearchResults');
@@ -6133,11 +6414,16 @@ async function renderSPEIndividual() {
   async function updateSearch(q) {
     const data = await ensureSPEData();
     if (!data) return;
-    const filtered = data.experiments.filter(e => e.pairKey.toLowerCase().includes(q.toLowerCase()));
+    const allExps = getSPEFilteredExps(data);
+    const filtered = allExps.filter(e => e.pairKey.toLowerCase().includes(q.toLowerCase()));
     resultsDiv.innerHTML = filtered.slice(0, 50).map(e => {
       const d = getSpeD(e);
+      const idChips = (e.identity_types || []).map(i => {
+        const ic = i === 'Self' ? '#ff9800' : (i === 'Stranger' ? '#2196f3' : '#4caf50');
+        return `<span style="display:inline-block;padding:0 2px;border-radius:3px;font-size:0.7em;background:${withAlpha(ic,0.15)};color:${ic};margin-right:1px;">${i}</span>`;
+      }).join('');
       return `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);">
-      ${e.pairKey} <span style="color:${d!==null?(d>0?'#ff9800':'#2196f3'):'#888'}">${d!==null?'d='+d.toFixed(3):'N/A'}</span>
+      ${e.pairKey} <span style="font-size:0.8em;">${idChips}</span> <span style="color:${d!==null?(d>0?'#ff9800':'#2196f3'):'#888'}">${d!==null?'d='+d.toFixed(3):'N/A'}</span>
     </div>`;}).join('');
     resultsDiv.querySelectorAll('.spe-exp-row').forEach(row => {
       row.addEventListener('click', () => loadSPEDetail(row.dataset.key));
@@ -6163,31 +6449,54 @@ async function loadSPEDetail(pairKey) {
   }
   const d = _speDetailData;
   const subs = d.subjects || [];
+  const primaryComp = d.primary_comparison || 'Stranger';
+  const identTypes = d.identity_types || [];
+  const comparisons = d.identity_comparisons || {};
+
+  // Build identity comparison summary
+  const compHTML = Object.entries(comparisons).map(([ident, comp]) => {
+    const rtD = comp.spe_rt_d;
+    const accD = comp.spe_acc_d;
+    const color = rtD !== null ? (rtD > 0 ? '#ff9800' : '#2196f3') : '#888';
+    return `<span style="display:inline-block;margin-right:6px;font-size:0.75em;">
+      <b>${ident}:</b> <span style="color:${color};">RT d=${rtD !== null ? rtD.toFixed(3) : 'N/A'}</span>
+      ${accD !== null ? ` ACC d=${accD.toFixed(3)}` : ''}
+    </span>`;
+  }).join('');
+
   const ld = document.getElementById('speLeftDetail');
   ld.innerHTML = `
     <div style="font-weight:600;color:var(--accent);">${pairKey}</div>
     <div style="font-size:0.72em;line-height:1.6;color:var(--text-secondary);">
       <div>被试数: ${d.n_subjects} | 试次: ${d.n_total_trials}</div>
-      <div>整体SPE(RT): <b>${d.overall_spe_rt_d !== null ? d.overall_spe_rt_d.toFixed(3) : 'N/A'}</b></div>
-      <div>Self RT: ${d.overall_self_mean_rt}ms | Stranger RT: ${d.overall_stranger_mean_rt}ms</div>
-      ${d.overall_self_acc !== null ? `<div>Self ACC: ${(d.overall_self_acc*100).toFixed(1)}% | Stranger ACC: ${(d.overall_stranger_acc*100).toFixed(1)}%</div>` : ''}
+      <div>Identity类型: ${identTypes.map(i => `<span style="color:${i==='Self'?'#ff9800':(i==='Stranger'?'#2196f3':'#4caf50')};">${i}</span>`).join(', ')}</div>
+      <div style="margin-top:2px;">${compHTML}</div>
+      <div style="margin-top:4px;">Self RT均值: ${d.overall_self_mean_rt}ms | ${primaryComp} RT均值: ${d.overall_stranger_mean_rt}ms</div>
+      ${d.overall_self_acc !== null ? `<div>Self ACC: ${(d.overall_self_acc*100).toFixed(1)}% | ${primaryComp} ACC: ${(d.overall_stranger_acc*100).toFixed(1)}%</div>` : ''}
       <div>P: ${d.meta.P_parsed_ms||'N/A'} | T: ${d.meta.T_parsed_ms||'N/A'}ms | W: ${d.meta.W_parsed_ms||'N/A'}ms</div>
     </div>
-    <div style="font-weight:600;margin-top:8px;margin-bottom:4px;">个体 SPE (按效应量排序)</div>
+    <div style="font-weight:600;margin-top:8px;margin-bottom:4px;">个体 SPE (Self vs ${primaryComp})</div>
     <div style="font-size:0.65em;color:var(--text-secondary);margin-bottom:6px;">
-      🟠 正 = Self更快 | 🔵 负 = Stranger更快
+      🟠 正 = Self更快 | 🔵 负 = ${primaryComp}更快
     </div>
-    <div style="max-height:calc(100vh - 500px);overflow-y:auto;font-size:0.7em;">
+    <div style="max-height:calc(100vh - 540px);overflow-y:auto;font-size:0.7em;">
       ${subs.map(s => {
         const dVal = s.spe_rt_d;
         const barW = dVal !== null ? Math.min(100, Math.abs(dVal)*80) : 0;
         const bgColor = dVal !== null ? (dVal > 0 ? '#ff9800' : '#2196f3') : '#888';
-        return `<div style="padding:2px 4px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;">
-          <span style="min-width:28px;">${s.subjectID}</span>
-          <span style="flex:1;height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
-            <span style="display:block;height:100%;width:${barW}%;background:${bgColor};border-radius:3px;"></span>
-          </span>
-          <span style="min-width:42px;text-align:right;color:${bgColor};font-weight:600;">${dVal!==null?dVal.toFixed(3):'N/A'}</span>
+        // Show per-identity RTs
+        const identRTs = s.identity_stats ? Object.entries(s.identity_stats).map(([i,st]) => 
+          `${i}: ${st.mean_rt}ms`
+        ).join(' | ') : '';
+        return `<div style="padding:2px 4px;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="min-width:28px;font-weight:600;">${s.subjectID}</span>
+            <span style="flex:1;height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
+              <span style="display:block;height:100%;width:${barW}%;background:${bgColor};border-radius:3px;"></span>
+            </span>
+            <span style="min-width:42px;text-align:right;color:${bgColor};font-weight:600;">${dVal!==null?dVal.toFixed(3):'N/A'}</span>
+          </div>
+          <div style="font-size:0.85em;color:var(--text-secondary);padding-left:32px;">${identRTs}</div>
         </div>`;
       }).join('')}
     </div>
@@ -6202,10 +6511,11 @@ async function loadSPEDetail(pairKey) {
     <div style="height:280px;"><canvas id="speIndivWaterfall"></canvas></div>
   `;
 
-  // RT distribution box plot style
-  const selfRTs = subs.flatMap(s => Array(s.n_self).fill(s.self_mean_rt));
-  const strangerRTs = subs.flatMap(s => Array(s.n_stranger).fill(s.stranger_mean_rt));
-  renderSPEDualHist('speIndivRT', subs.map(s=>s.self_mean_rt).filter(v=>v!==null), subs.map(s=>s.stranger_mean_rt).filter(v=>v!==null), 'RT (ms)', '#ff9800', '#2196f3');
+  // Per-subject identity RT distributions
+  const selfMeanRTs = subs.map(s => s.self_mean_rt).filter(v => v !== null);
+  const otherKey = Object.keys(subs[0] || {}).find(k => k.endsWith('_mean_rt') && k !== 'self_mean_rt');
+  const otherMeanRTs = otherKey ? subs.map(s => s[otherKey]).filter(v => v !== null) : [];
+  renderSPEDualHist('speIndivRT', selfMeanRTs, otherMeanRTs, 'RT (ms)', '#ff9800', '#2196f3');
 
   // Per-subject SPE bar chart
   renderSPESubjectBars('speIndivSPE', subs.filter(s=>s.spe_rt_d!==null));
@@ -6311,6 +6621,338 @@ function renderSPEWaterfall(canvasId, subs) {
     }
   });
   _speCharts.push(chart);
+}
+
+// ===== CRF Analysis View =====
+let _crfTrials = null;
+let _crfPairKey = null;
+let _crfYMode = 'pMatch';  // 'pMatch' | 'acc'
+let _crfSelVars = { 'Self_Matching': true, 'Self_NonMatching': true, 'Stranger_Matching': true, 'Stranger_NonMatching': true };
+let _crfQuantiles = 5;
+let _crfOutlierCut = 0;  // 0 = off, e.g. 3 = remove RT > 3*SD
+let _crfViewMode = 'grouped';  // 'grouped' | 'overall'
+
+const CRF_COLORS = {
+  'Self_Matching':      '#ff9800',
+  'Self_NonMatching':   '#ffcc80',
+  'Stranger_Matching':  '#2196f3',
+  'Stranger_NonMatching': '#90caf9',
+};
+
+const CRF_LABELS = {
+  'Self_Matching':      'Self + Matching',
+  'Self_NonMatching':   'Self + NonMatching',
+  'Stranger_Matching':  'Stranger + Matching',
+  'Stranger_NonMatching':'Stranger + NonMatching',
+};
+
+const CRF_DASH = {
+  'Self_Matching':      [],
+  'Self_NonMatching':   [6, 3],
+  'Stranger_Matching':  [],
+  'Stranger_NonMatching':[6, 3],
+};
+
+async function renderSPECRF() {
+  destroySPECharts();
+
+  // Left panel: experiment search list
+  const lp = document.getElementById('speLeftDetail');
+  const data = await ensureSPEData();
+  lp.innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px;color:var(--accent);">CRF 条件反应函数分析</div>
+    <div style="font-size:0.72em;color:var(--text-secondary);margin-bottom:6px;">
+      P(Matching) = 选择匹配按键概率 | ACC = 正确率<br>
+      RT分位数 = 按反应时排序后等分为 N 个bin
+    </div>
+    <input id="speCrfSearch" type="text" placeholder="搜索实验..." style="width:100%;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text);font-size:0.75em;margin-bottom:6px;" />
+    <div id="speCrfSearchResults" style="max-height:calc(100vh - 340px);overflow-y:auto;"></div>
+  `;
+
+  // Right panel: variable selection + chart area
+  const rp = document.getElementById('speRightCharts');
+  rp.innerHTML = `
+    <div style="font-weight:600;color:var(--accent);margin-bottom:6px;">
+      CRF 条件反应函数 <span id="crfExpLabel" style="font-weight:400;color:var(--text-secondary);">— 请选择实验</span>
+    </div>
+    <div id="crfControlPanel" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:0.72em;">
+      <span style="color:var(--text-secondary);">变量:</span>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="crfSel_Self_Matching" checked /> <span style="color:#ff9800;">Self+Match</span></label>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="crfSel_Self_NonMatching" checked /> <span style="color:#ffcc80;">Self+NMatch</span></label>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="crfSel_Stranger_Matching" checked /> <span style="color:#2196f3;">Str+Match</span></label>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="crfSel_Stranger_NonMatching" checked /> <span style="color:#90caf9;">Str+NMatch</span></label>
+      <span style="margin-left:8px;color:var(--text-secondary);">Y轴:</span>
+      <select id="crfYMode" style="padding:2px 4px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:3px;">
+        <option value="pMatch">P(Matching)</option>
+        <option value="acc">准确率(ACC)</option>
+      </select>
+      <span style="margin-left:8px;color:var(--text-secondary);">分位数:</span>
+      <select id="crfQuantiles" style="padding:2px 4px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:3px;">
+        <option value="3">3</option><option value="4">4</option><option value="5" selected>5</option>
+        <option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="10">10</option>
+      </select>
+      <span style="margin-left:8px;color:var(--text-secondary);">异常值(SD):</span>
+      <select id="crfOutlier" style="padding:2px 4px;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:3px;">
+        <option value="0" selected>关</option><option value="2.5">2.5σ</option><option value="3">3σ</option>
+      </select>
+      <span style="margin-left:8px;color:var(--text-secondary);">视图:</span>
+      <button class="crf-mode-btn active" id="crfViewGrouped" style="font-size:0.72em;padding:2px 6px;">分组</button>
+      <button class="crf-mode-btn" id="crfViewOverall" style="font-size:0.72em;padding:2px 6px;">整体</button>
+    </div>
+    <div style="position:relative;flex:1;min-height:380px;">
+      <canvas id="speCrfChart"></canvas>
+    </div>
+    <div id="crfLegend" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-size:0.72em;margin-top:4px;"></div>
+    <div id="crfStats" style="font-size:0.7em;color:var(--text-secondary);margin-top:4px;text-align:center;"></div>
+  `;
+
+  // Populate search results
+  const searchInput = document.getElementById('speCrfSearch');
+  const resultsDiv = document.getElementById('speCrfSearchResults');
+  async function updateSearch(q) {
+    const d = await ensureSPEData();
+    if (!d) return;
+    const filtered = d.experiments.filter(e => e.pairKey.toLowerCase().includes(q.toLowerCase()));
+    resultsDiv.innerHTML = filtered.slice(0, 50).map(e => {
+      const dv = getSpeD(e);
+      const c = dv !== null ? (dv > 0 ? '#ff9800' : '#2196f3') : '#888';
+      return `<div class="spe-exp-row" data-key="${e.pairKey}" style="padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.72em;">
+        ${e.pairKey} <span style="color:${c}">${dv!==null?'d='+dv.toFixed(3):'N/A'}</span>
+      </div>`;
+    }).join('');
+    resultsDiv.querySelectorAll('.spe-exp-row').forEach(row => {
+      row.addEventListener('click', () => loadCrfExperiment(row.dataset.key));
+    });
+  }
+  searchInput.addEventListener('input', () => updateSearch(searchInput.value));
+  updateSearch('');
+
+  // Bind control events
+  ['Self_Matching','Self_NonMatching','Stranger_Matching','Stranger_NonMatching'].forEach(vk => {
+    const cb = document.getElementById('crfSel_'+vk);
+    if (cb) cb.addEventListener('change', () => { _crfSelVars[vk] = cb.checked; redrawCrfChart(); });
+  });
+  document.getElementById('crfYMode').addEventListener('change', function(){ _crfYMode=this.value; redrawCrfChart(); });
+  document.getElementById('crfQuantiles').addEventListener('change', function(){ _crfQuantiles=parseInt(this.value); if (_crfTrials) redrawCrfChart(); });
+  document.getElementById('crfOutlier').addEventListener('change', function(){ _crfOutlierCut=parseFloat(this.value); if (_crfTrials) redrawCrfChart(); });
+  document.getElementById('crfViewGrouped').addEventListener('click', () => { _crfViewMode = 'grouped'; setCrfViewActive(); if (_crfTrials) redrawCrfChart(); });
+  document.getElementById('crfViewOverall').addEventListener('click', () => { _crfViewMode = 'overall'; setCrfViewActive(); if (_crfTrials) redrawCrfChart(); });
+}
+
+async function loadCrfExperiment(pairKey) {
+  _crfPairKey = pairKey;
+  destroySPECharts();
+  document.getElementById('crfExpLabel').textContent = ' — 加载中...';
+  const rp = document.getElementById('speRightCharts');
+  try {
+    const resp = await fetchAPI('/api/spe/trials?key=' + encodeURIComponent(pairKey));
+    if (resp.error) { document.getElementById('crfExpLabel').textContent = ' — 错误: '+resp.error; return; }
+    _crfTrials = resp.trials || [];
+    document.getElementById('crfExpLabel').textContent = ' — ' + pairKey + ' (N=' + _crfTrials.length + ' trials)';
+    redrawCrfChart();
+  } catch(e) {
+    document.getElementById('crfExpLabel').textContent = ' — 加载失败: ' + e.message;
+  }
+}
+
+function setCrfViewActive() {
+  const g = document.getElementById('crfViewGrouped');
+  const o = document.getElementById('crfViewOverall');
+  if (g) g.classList.toggle('active', _crfViewMode === 'grouped');
+  if (o) o.classList.toggle('active', _crfViewMode === 'overall');
+}
+
+function redrawCrfChart() {
+  if (!_crfTrials || _crfTrials.length === 0) return;
+  destroySPECharts();
+  const canvas = document.getElementById('speCrfChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  // Global outlier filter
+  let trialsFiltered = _crfTrials;
+  if (_crfOutlierCut > 0) {
+    const allRTs = _crfTrials.map(t => t.RT_ms);
+    const meanRT = allRTs.reduce((s,v)=>s+v,0)/allRTs.length;
+    const sdRT = Math.sqrt(allRTs.reduce((s,v)=>s+Math.pow(v-meanRT,2),0)/allRTs.length);
+    const cutoff = _crfOutlierCut * sdRT;
+    trialsFiltered = _crfTrials.filter(t => Math.abs(t.RT_ms - meanRT) <= cutoff);
+  }
+
+  // Build datasets based on view mode
+  const datasets = [];
+
+  if (_crfViewMode === 'grouped') {
+    // --- Grouped mode: 4 variable combos ---
+    const varKeys = ['Self_Matching','Self_NonMatching','Stranger_Matching','Stranger_NonMatching'];
+    for (const vk of varKeys) {
+      if (!_crfSelVars[vk]) continue;
+      const [identity, matching] = vk.split('_');
+      const subset = trialsFiltered.filter(t => {
+        if (t.Identity !== identity) return false;
+        if (matching === 'Matching' && t.Matching !== 'Matching') return false;
+        if (matching === 'NonMatching' && t.Matching === 'Matching') return false;
+        return true;
+      });
+      if (subset.length < 10) continue;
+
+      const bins = computeCrfBins(subset, _crfQuantiles);
+      datasets.push({
+        label: CRF_LABELS[vk],
+        data: bins,
+        borderColor: CRF_COLORS[vk],
+        backgroundColor: withAlpha(CRF_COLORS[vk], 0.1),
+        borderWidth: 2,
+        pointRadius: 4,
+        pointBackgroundColor: CRF_COLORS[vk],
+        tension: 0.2,
+        borderDash: CRF_DASH[vk],
+        showLine: true,
+        spanGaps: true,
+      });
+    }
+  } else {
+    // --- Overall mode: Self all combined, Stranger all combined ---
+    const selfSubset = trialsFiltered.filter(t => t.Identity === 'Self');
+    const strangerSubset = trialsFiltered.filter(t => t.Identity === 'Stranger');
+    
+    if (selfSubset.length >= 10) {
+      const bins = computeCrfBins(selfSubset, _crfQuantiles);
+      datasets.push({
+        label: 'Self (Overall)',
+        data: bins,
+        borderColor: '#ff9800',
+        backgroundColor: withAlpha('#ff9800', 0.1),
+        borderWidth: 2.5,
+        pointRadius: 5,
+        pointBackgroundColor: '#ff9800',
+        tension: 0.2,
+        showLine: true,
+        spanGaps: true,
+      });
+    }
+    if (strangerSubset.length >= 10) {
+      const bins = computeCrfBins(strangerSubset, _crfQuantiles);
+      datasets.push({
+        label: 'Stranger (Overall)',
+        data: bins,
+        borderColor: '#2196f3',
+        backgroundColor: withAlpha('#2196f3', 0.1),
+        borderWidth: 2.5,
+        pointRadius: 5,
+        pointBackgroundColor: '#2196f3',
+        tension: 0.2,
+        showLine: true,
+        spanGaps: true,
+      });
+    }
+  }
+
+  if (datasets.length === 0) {
+    document.getElementById('crfLegend').innerHTML = '<span style="color:var(--text-secondary);">无数据 (请选择至少一个变量组合)</span>';
+    return;
+  }
+
+  const textColor = appState.theme === 'light' ? '#2c3e50' : '#e0e0e0';
+  const gridColor = appState.theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+  const yLabel = _crfYMode === 'pMatch' ? 'P(Matching)' : '准确率 (ACC)';
+  const viewLabel = _crfViewMode === 'overall' ? ' (Overall)' : '';
+
+  const chart = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: {
+        title: {
+          display: true,
+          text: _crfPairKey + ' — CRF 条件反应函数' + viewLabel,
+          color: textColor,
+          font: { size: 13 }
+        },
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const p = ctx.raw;
+              const yVal = (_crfYMode === 'pMatch' ? 'P(Match)' : 'ACC');
+              return [
+                `${ctx.dataset.label}`,
+                `RT: ${p.x.toFixed(1)} ms`,
+                `${yVal}: ${(p.y*100).toFixed(1)}%`,
+                `n=${p.n}`, `SEM=${(p.ySEM*100).toFixed(1)}%`
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: '反应时 (ms)', color: textColor },
+          ticks: { color: textColor },
+          grid: { color: gridColor },
+          min: 0,
+        },
+        y: {
+          type: 'linear',
+          title: { display: true, text: yLabel, color: textColor },
+          ticks: { color: textColor, callback: v => (v*100).toFixed(0)+'%' },
+          grid: { color: gridColor },
+          min: 0,
+          max: 1,
+        }
+      }
+    }
+  });
+  _speCharts.push(chart);
+
+  // Custom legend
+  const legendDiv = document.getElementById('crfLegend');
+  legendDiv.innerHTML = datasets.map(ds => `
+    <span style="display:flex;align-items:center;gap:4px;cursor:pointer;" data-ds-label="${ds.label}">
+      <span style="display:inline-block;width:20px;height:3px;background:${ds.borderColor};${ds.borderDash && ds.borderDash.length ? 'border-bottom:2px dashed '+ds.borderColor : ''}"></span>
+      <span style="color:${ds.borderColor};">●</span>
+      ${ds.label}
+    </span>
+  `).join('');
+
+  // Stats
+  const statsDiv = document.getElementById('crfStats');
+  const nFiltered = trialsFiltered.length;
+  statsDiv.innerHTML = `总试次: ${_crfTrials.length} | 过滤后: ${nFiltered} | 分位数: ${_crfQuantiles} | 视图: ${_crfViewMode==='overall'?'整体':'分组'} | 异常值: ${_crfOutlierCut > 0 ? _crfOutlierCut+'σ' : '关'}`;
+}
+
+// Extract computeCrfBins as reusable function
+function computeCrfBins(subset, nQ) {
+  const sorted = [...subset].sort((a,b) => a.RT_ms - b.RT_ms);
+  const binSize = Math.floor(sorted.length / nQ);
+  const bins = [];
+  for (let i = 0; i < nQ; i++) {
+    const start = i * binSize;
+    const end = (i === nQ - 1) ? sorted.length : (i + 1) * binSize;
+    const bin = sorted.slice(start, end);
+    if (bin.length === 0) continue;
+    const rtMean = bin.reduce((s,t) => s + t.RT_ms, 0) / bin.length;
+    const rtSEM = Math.sqrt(bin.reduce((s,t) => s + Math.pow(t.RT_ms - rtMean, 2), 0) / bin.length) / Math.sqrt(bin.length);
+
+    let yVal, ySEM;
+    if (_crfYMode === 'pMatch') {
+      const nMatch = bin.filter(t => t.Matching === 'Matching').length;
+      const p = nMatch / bin.length;
+      yVal = p;
+      ySEM = Math.sqrt(p * (1 - p) / bin.length);
+    } else {
+      const nCorrect = bin.filter(t => t.ACC === 1).length;
+      const p = nCorrect / bin.length;
+      yVal = p;
+      ySEM = Math.sqrt(p * (1 - p) / bin.length);
+    }
+    bins.push({ x: rtMean, y: yVal, xSEM: rtSEM, ySEM: ySEM, n: bin.length });
+  }
+  return bins;
 }
 
 function linearFit(xs, ys) {
