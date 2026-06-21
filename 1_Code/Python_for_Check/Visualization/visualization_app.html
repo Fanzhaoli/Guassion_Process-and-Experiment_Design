@@ -2262,7 +2262,8 @@ async function renderVisualizationTab(lp, rp) {
       </div>
       <div style="font-weight:600;color:var(--accent);margin-top:8px;margin-bottom:3px;">X轴显示模式</div>
       <select id="crfXAxisModeSelect" style="width:100%;font-size:0.9em;padding:4px 8px;">
-        <option value="rtMean" selected>RT均值 (秒) — 各分箱平均反应时</option>
+        <option value="rtMeanMs" selected>RT均值 (ms) — 各分箱平均反应时（毫秒）</option>
+        <option value="rtMean">RT均值 (秒) — 各分箱平均反应时（秒）</option>
         <option value="binIndex">分箱序号 (1, 2, 3...) — 等距排列</option>
       </select>
       <div style="margin-top:6px;">
@@ -2273,15 +2274,22 @@ async function renderVisualizationTab(lp, rp) {
       </div>
     </div>
 
-    <div class="section-title">CRF方法说明</div>
+    <div class="section-title">CRF / CAF 方法说明</div>
     <div style="font-size:0.75em;color:var(--text-secondary);line-height:1.7;background:var(--bg-card);padding:10px;border-radius:6px;border:1px solid var(--border);">
-      <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">▎累积反应函数 (CRF) 可视化</div>
-      <div><b>图表类型:</b> 分位数分箱的CRF散点图 + 二次多项式趋势线</div>
-      <div><b>横轴:</b> 每个RT分位数箱的均值反应时间（秒）</div>
+      <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">▎条件反应函数 (CRF) 与 条件准确率函数 (CAF)</div>
+      <div><b>图表类型:</b> 分位数分箱的 CRF / CAF 散点图 + 二次多项式趋势线</div>
+      <div><b>横轴:</b> 每个RT分位数箱的均值反应时间（支持秒/毫秒切换）</div>
+      <div style="margin-top:4px;"><b>CRF — Conditional Response Function (条件反应函数):</b></div>
+      <div>• 纵轴 = P(Match Key) — 被试选择"匹配键"的比例, 取值范围 [0,1]</div>
+      <div>• 反映被试在特定RT区间内倾向于做出"匹配"判断的概率</div>
+      <div>• 基于 Lappin & Disch (1972) 的速度-准确性分解框架</div>
+      <div style="margin-top:4px;"><b>CAF — Conditional Accuracy Function (条件准确率函数):</b></div>
+      <div>• 纵轴 = ACC — 在对应RT分箱内正确反应的比例</div>
+      <div>• 反映被试在不同反应速度下的准确率变化</div>
       <div style="margin-top:4px;"><b>Y轴指标:</b></div>
       <div>• <b>d'</b> — 信号检测论辨别力指数 (d-prime)：基于命中率(Hit)和虚报率(FA)计算，d' = z(Hit) - z(FA)，反映被试区分匹配与非匹配刺激的敏感性</div>
-      <div>• <b>P(Match Key)</b> — 匹配键比例：被试选择"匹配键"的比例，取值范围 [0,1]</div>
-      <div>• <b>ACC</b> — 准确率(正确反应比例)：在对应时间窗内正确反应的比例</div>
+      <div>• <b>P(Match Key)</b> — CRF：匹配键选择比例</div>
+      <div>• <b>ACC</b> — CAF：准确率(正确反应比例)</div>
       <div style="margin-top:4px;"><b>数据系列:</b></div>
       <div>🟠 <b>Self</b> — 自我标签试次 | 🔵 <b>Stranger</b> — 生人标签试次</div>
       <div>🟢 <b>Matching</b> — 匹配条件 | 🔴 <b>NonMatching</b> — 非匹配条件</div>
@@ -2290,9 +2298,9 @@ async function renderVisualizationTab(lp, rp) {
       <div>• 阴影带 = 95%置信区间 (SEM × 1.96)</div>
       <div>• 竖线误差棒 = 每个bin的±1.96 SEM范围</div>
       <div style="margin-top:4px;"><b>基线说明:</b></div>
-      <div>--- 水平虚线 = 无偏向基线 (P=0.5)，表示被试随机选择</div>
+      <div>--- 水平虚线 = 无偏向基线 (CRF: P=0.5)，表示被试随机选择</div>
       <div style="margin-top:4px;"><b>理论依据:</b></div>
-      <div>基于Sui(2012) Self-Matching Task，CRF反映证据积累的时间动态过程。DDM的上边界命中概率随RT增大而上升。</div>
+      <div>基于 Sui (2012) Self-Matching Task。CRF (Lappin & Disch, 1972) 反映证据积累的时间动态过程；CAF 补充速度-准确性权衡分析。DDM 的上边界命中概率随 RT 增大而上升。</div>
     </div>
     <div style="font-size:0.75em;color:var(--text-secondary);line-height:1.7;background:var(--bg-card);padding:10px;border-radius:6px;border:1px solid var(--border);margin-top:8px;">
       <div style="font-weight:600;color:var(--accent);margin-bottom:4px;">▎自我加工效应 (SPE) 图表</div>
@@ -2317,6 +2325,9 @@ async function renderVisualizationTab(lp, rp) {
         <select id="crfOvQuantile" style="font-size:0.8em;padding:2px 6px;">
           <option value="4">4</option><option value="5" selected>5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option></select>
         <button id="btnLoadCrfOverview" style="font-size:0.75em;padding:3px 10px;">加载全部数据</button>
+        <span style="margin-left:4px;font-size:0.72em;display:flex;align-items:center;gap:3px;cursor:pointer;" id="crfOvMultiMetricLabel">
+          <input type="checkbox" id="crfOvMultiMetric" style="accent-color:var(--accent);"> <span>多指标</span>
+        </span>
       </div>
       <canvas id="crfOverviewCanvas" style="width:100%;cursor:grab;min-height:280px;max-height:380px;display:block;"></canvas>
       <div id="crfOverviewLegend" style="margin-top:6px;font-size:0.7em;line-height:1.6;border:1px solid var(--border);border-radius:4px;padding:6px 10px;background:var(--bg-card);display:flex;align-items:center;gap:8px;flex-wrap:wrap;"></div>
@@ -2823,8 +2834,9 @@ function updateCRFChart() {
     const useOverallACC = isACC && _crfACCMode === 'overall';
     const useBinACC = isACC && _crfACCMode === 'bin';
     const useBinIndex = _crfXAxisMode === 'binIndex';
+    const useMs = _crfXAxisMode === 'rtMeanMs';
     const yLabel = isDprime ? "d' (辨别力指数)" : (isACC ? (useOverallACC ? 'ACC (整体准确率)' : 'ACC (区间准确率)') : '匹配键选择比例 (P_Match_Response)');
-    const xLabel = useBinIndex ? '分箱序号 (Bin Index)' : (_crfRTLog ? 'ln(RT)' : 'RT (秒)');
+    const xLabel = useBinIndex ? '分箱序号 (Bin Index)' : (useMs ? 'RT (ms)' : (_crfRTLog ? 'ln(RT)' : 'RT (秒)'));
     titleEl.textContent = `(n=${trials.length}, Self=${selfTrials.length}, Stranger=${strangerTrials.length}, Q=${nQ})`;
 
     const ctx = document.getElementById('crfChart').getContext('2d');
@@ -2845,7 +2857,7 @@ function updateCRFChart() {
       if (useOverallACC) return 0;
       return b.sem;
     };
-    const getXVal = (b, idx) => useBinIndex ? (idx + 1) : b.rtMean;
+    const getXVal = (b, idx) => useBinIndex ? (idx + 1) : (useMs ? b.rtMean * 1000 : b.rtMean);
 
     const overallACCSelf = crfSelfResult ? crfSelfResult.overallACC : 0;
     const overallACCStranger = crfStrangerResult ? crfStrangerResult.overallACC : 0;
@@ -3043,7 +3055,7 @@ function updateCRFChart() {
                   if (useBinIndex) {
                     return d.label + ': Bin=' + ctx.parsed.x.toFixed(0) + ', ' + (isDprime ? "d'="+ctx.parsed.y.toFixed(3) : (isACC ? 'ACC='+(ctx.parsed.y*100).toFixed(1)+'%' : 'P(Match)='+(ctx.parsed.y*100).toFixed(1)+'%'));
                   }
-                  return d.label + ': ' + (_crfRTLog ? 'ln(RT)' : 'RT') + '=' + ctx.parsed.x.toFixed(2) + (_crfRTLog ? '' : 's') + ', ' + (isDprime ? "d'="+ctx.parsed.y.toFixed(3) : (isACC ? 'ACC='+(ctx.parsed.y*100).toFixed(1)+'%' : 'P(Match)='+(ctx.parsed.y*100).toFixed(1)+'%'));
+                  return d.label + ': ' + (_crfRTLog ? 'ln(RT)' : 'RT') + '=' + ctx.parsed.x.toFixed(useMs ? 0 : 2) + (useMs ? 'ms' : (_crfRTLog ? '' : 's')) + ', ' + (isDprime ? "d'="+ctx.parsed.y.toFixed(3) : (isACC ? 'ACC='+(ctx.parsed.y*100).toFixed(1)+'%' : 'P(Match)='+(ctx.parsed.y*100).toFixed(1)+'%'));
                 }
               }
             }
@@ -3091,6 +3103,7 @@ function updateSPEChart(crfSelf, crfStranger) {
   const isACC = _crfYMetric === 'acc';
   const useOverallACC = isACC && _crfACCMode === 'overall';
   const useBinIndex = _crfXAxisMode === 'binIndex';
+  const useMs = _crfXAxisMode === 'rtMeanMs';
   const overallACCSelf = _crfCache.overallACCSelf || 0;
   const overallACCStranger = _crfCache.overallACCStranger || 0;
 
@@ -3099,7 +3112,7 @@ function updateSPEChart(crfSelf, crfStranger) {
   const minLen = Math.min(crfSelf.length, crfStranger.length);
   const isDprimeSPE = _crfYMetric === 'dprime';
   for (let i = 0; i < minLen; i++) {
-    const rtX = useBinIndex ? (i + 1) : (crfSelf[i].rtMean + crfStranger[i].rtMean) / 2;
+    const rtX = useBinIndex ? (i + 1) : (useMs ? (crfSelf[i].rtMean + crfStranger[i].rtMean) * 500 : (crfSelf[i].rtMean + crfStranger[i].rtMean) / 2);
     let speY;
     let sem;
     if (isDprimeSPE) {
@@ -3120,7 +3133,7 @@ function updateSPEChart(crfSelf, crfStranger) {
   }
 
   const speLabel = isDprimeSPE ? "SPE = d'_Self − d'_Stranger" : (isACC ? 'SPE = ACC_Self - ACC_Stranger' : 'SPE = P_Self - P_Stranger');
-  const xLabelSPE = useBinIndex ? '分箱序号 (Bin Index)' : (_crfRTLog ? 'ln(RT)' : 'RT均值 (秒)');
+  const xLabelSPE = useBinIndex ? '分箱序号 (Bin Index)' : (useMs ? 'RT均值 (ms)' : (_crfRTLog ? 'ln(RT)' : 'RT均值 (秒)'));
 
   const speXs = speData.map(d => d.x);
   const speYs = speData.map(d => d.y);
@@ -3223,7 +3236,7 @@ function updateSPEChart(crfSelf, crfStranger) {
                 const d = ctx.dataset;
                 if (d.label.includes('trend')) return '';
                 const metricName = isDprimeSPE ? "Δd'" : (isACC ? 'ΔACC' : 'ΔP(Match)');
-                const rtx = useBinIndex ? ('Bin='+ctx.parsed.x.toFixed(0)) : ((_crfRTLog ? 'ln(RT)=' : 'RT=')+ctx.parsed.x.toFixed(2)+(_crfRTLog ? '' : 's'));
+                const rtx = useBinIndex ? ('Bin='+ctx.parsed.x.toFixed(0)) : ((useMs ? 'RT='+ctx.parsed.x.toFixed(0)+'ms' : (_crfRTLog ? 'ln(RT)=' : 'RT=')+ctx.parsed.x.toFixed(2)+(_crfRTLog ? '' : 's')));
                 const metVal = isDprimeSPE ? (metricName+'='+ctx.parsed.y.toFixed(3)) : (metricName+'='+(ctx.parsed.y*100).toFixed(1)+'%');
                 return 'SPE: ' + rtx + ', ' + metVal;
               }
@@ -3530,12 +3543,13 @@ let _crfOvDragging = false;
 let _crfOvDragStart = { x: 0, y: 0, offsetX: 0, offsetY: 0 };
 let _crfYMetric = 'matchProp';
 let _crfACCMode = 'bin';
-let _crfXAxisMode = 'rtMean';
+let _crfXAxisMode = 'rtMeanMs';
 let _crfRTLog = false;  // log-transform RT
 let _crfOvShowSelf = true;
 let _crfOvShowStranger = true;
 let _crfOvCondition = 'all';  // 'all' | 'Matching' | 'NonMatching'
 let _crfOvSplitCondition = false;  // 四条件模式: Self/Stranger × Matching/NonMatching
+let _crfOvMultiMetric = false;  // 多指标并排: 同时显示 P(Match) + ACC
 
 function initCRFOverview() {
   const btnGroup = document.getElementById('crfOvLevelGroup');
@@ -3555,6 +3569,13 @@ function initCRFOverview() {
   });
   const btnLoad = document.getElementById('btnLoadCrfOverview');
   if (btnLoad) btnLoad.addEventListener('click', () => loadCRFOverviewData());
+
+  // Multi-metric toggle
+  const mmCheck = document.getElementById('crfOvMultiMetric');
+  if (mmCheck) mmCheck.addEventListener('change', () => {
+    _crfOvMultiMetric = mmCheck.checked;
+    if (_crfOvData) renderCRFOverview();
+  });
 
   const canvas = document.getElementById('crfOverviewCanvas');
   if (canvas) {
@@ -3793,6 +3814,12 @@ function renderCRFOverview() {
   if (!_crfOvData) return;
   const canvas = document.getElementById('crfOverviewCanvas');
   if (!canvas) return;
+
+  if (_crfOvMultiMetric && !_crfOvData.isDprime) {
+    renderCRFOverviewMultiMetric(canvas);
+    return;
+  }
+
   const rect = canvas.parentElement.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
   const cssW = rect.width;
@@ -3801,6 +3828,7 @@ function renderCRFOverview() {
   canvas.height = cssH * dpr;
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
+  canvas.style.maxHeight = cssH + 'px';  // restore single-chart height
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const W = cssW, H = cssH;
@@ -3827,6 +3855,7 @@ function renderCRFOverview() {
   const isACC = _crfYMetric === 'acc';
   const useOverallACC = isACC && _crfACCMode === 'overall';
   const useBinIndexOv = _crfXAxisMode === 'binIndex';
+  const useMs = _crfXAxisMode === 'rtMeanMs';
   const showSelf = _crfOvShowSelf;
   const showStranger = _crfOvShowStranger;
 
@@ -3836,10 +3865,10 @@ function renderCRFOverview() {
     if (isACC) return b.binACC;
     return b.upperProp;
   };
-  const getOvX = (b, idx) => useBinIndexOv ? (idx + 1) : b.rtMean;
+  const getOvX = (b, idx) => useBinIndexOv ? (idx + 1) : (useMs ? b.rtMean * 1000 : b.rtMean);
 
   const yTitle = isDprimeOv ? "d' (辨别力指数)" : (isACC ? (useOverallACC ? 'ACC (overall)' : 'ACC (bin)') : 'P(Match Key)');
-  const xTitleOv = useBinIndexOv ? 'Bin Index' : (_crfRTLog ? 'ln(RT)' : 'RT bin mean (s)');
+  const xTitleOv = useBinIndexOv ? 'Bin Index' : (useMs ? 'RT bin mean (ms)' : (_crfRTLog ? 'ln(RT)' : 'RT bin mean (s)'));
 
   // Plot area background
   ctx.fillStyle = appState.theme === 'light' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.02)';
@@ -3923,6 +3952,8 @@ function renderCRFOverview() {
     if (!isFinite(rtMin)) { rtMin = 0.2; rtMax = 1.8; }
     const pad = Math.max(0.03, (rtMax - rtMin) * 0.08);
     xRange = [rtMin - pad, rtMax + pad];
+    // Scale for ms display mode
+    if (useMs) { xRange[0] *= 1000; xRange[1] *= 1000; }
   }
 
   const xToPx = (x) => margin.l + ((x - xRange[0]) / (xRange[1] - xRange[0])) * pw;
@@ -3942,7 +3973,7 @@ function renderCRFOverview() {
     for (let i = 0; i <= xTickCount; i++) {
       const val = xRange[0] + (xRange[1] - xRange[0]) * i / xTickCount;
       const px = margin.l + pw * i / xTickCount;
-      ctx.fillText(val.toFixed(2), px, margin.t + ph + 16);
+      ctx.fillText(useMs ? val.toFixed(0) : val.toFixed(2), px, margin.t + ph + 16);
       ctx.beginPath(); ctx.moveTo(px, margin.t + ph); ctx.lineTo(px, margin.t + ph + 4);
       ctx.strokeStyle = axisC; ctx.stroke();
     }
@@ -4166,6 +4197,213 @@ function buildCrfOvLegend() {
     _crfOvSplitCondition = splitCheck.checked;
     renderCRFOverview();
   });
+}
+
+// ===== Multi-Metric Overview: 单图合并 CRF(P(Match)) + CAF(ACC) =====
+// 视觉区分: CRF=实线+圆点, CAF=虚线+三角 | 每组一色 | Self 条件为主
+function renderCRFOverviewMultiMetric(canvas) {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = rect.width;
+  const cssH = Math.max(340, rect.width * 0.62);
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas.style.maxHeight = cssH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = cssW, H = cssH;
+
+  const bg = appState.theme === 'light' ? '#fafbfc' : '#0a1628';
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const zoom = _crfOvView.zoom;
+  const ox = _crfOvView.offsetX, oy = _crfOvView.offsetY;
+  ctx.save(); ctx.translate(ox, oy); ctx.scale(zoom, zoom);
+
+  const txtC = appState.theme === 'light' ? '#4a5a6a' : '#b0bec5';
+  const gridC = appState.theme === 'light' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.06)';
+  const axisC = appState.theme === 'light' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)';
+
+  const useBinIndexOv = _crfXAxisMode === 'binIndex';
+  const useMs = _crfXAxisMode === 'rtMeanMs';
+  const getOvX = (b, idx) => useBinIndexOv ? (idx + 1) : (useMs ? b.rtMean * 1000 : b.rtMean);
+
+  const groupColors = ['#e91e63','#9c27b0','#673ab7','#3f51b5','#2196f3','#00bcd4','#009688','#4caf50'];
+
+  // --- Compute shared X range ---
+  let rtMin = Infinity, rtMax = -Infinity;
+  for (let gid = 1; gid <= 8; gid++) {
+    if (!_crfOvVisible.has(gid)) continue;
+    const gd = _crfOvData.aggByGroup[gid];
+    [gd.selfCRF, gd.strangerCRF].forEach(crf => {
+      if (!crf) return;
+      crf.forEach(b => { rtMin = Math.min(rtMin, b.rtMean); rtMax = Math.max(rtMax, b.rtMean); });
+    });
+  }
+  if (!isFinite(rtMin)) { rtMin = 0.2; rtMax = 1.8; }
+  const pad = Math.max(0.03, (rtMax - rtMin) * 0.08);
+  let xRange = [rtMin - pad, rtMax + pad];
+  if (useMs) { xRange[0] *= 1000; xRange[1] *= 1000; }
+
+  // --- Layout ---
+  const margin = { l: 56, r: 18, t: 34, b: 50 };
+  const pw = W - margin.l - margin.r, ph = H - margin.t - margin.b;
+
+  // Plot area
+  ctx.fillStyle = appState.theme === 'light' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.02)';
+  ctx.fillRect(margin.l, margin.t, pw, ph);
+  ctx.strokeStyle = axisC; ctx.lineWidth = 1;
+  ctx.strokeRect(margin.l, margin.t, pw, ph);
+
+  // --- Y-axis: proportion [0, 1], step 0.1 ---
+  const yMin = 0, yMax = 1, yStep = 0.1;
+  const yRange = yMax - yMin;
+  const xToPx = (x) => margin.l + ((x - xRange[0]) / (xRange[1] - xRange[0])) * pw;
+  const yToPx = (y) => margin.t + ph * (1 - (y - yMin) / yRange);
+
+  // Grid + Y labels
+  ctx.strokeStyle = gridC; ctx.lineWidth = 0.5;
+  ctx.fillStyle = txtC; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  for (let yv = yMin; yv <= yMax + 0.001; yv += yStep) {
+    const py = yToPx(yv);
+    ctx.beginPath(); ctx.moveTo(margin.l, py); ctx.lineTo(margin.l + pw, py); ctx.stroke();
+    ctx.fillText(yv.toFixed(1), margin.l - 6, py + 3);
+  }
+  // 0.5 baseline
+  ctx.strokeStyle = 'rgba(128,128,128,0.4)';
+  ctx.setLineDash([4, 6]);
+  ctx.beginPath(); ctx.moveTo(margin.l, yToPx(0.5)); ctx.lineTo(margin.l + pw, yToPx(0.5)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Y-axis title
+  ctx.save();
+  ctx.translate(10, margin.t + ph / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = txtC; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Proportion (P(Match) / ACC)', 0, 0);
+  ctx.restore();
+
+  // Chart title
+  ctx.fillStyle = '#e91e63'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('CRF + CAF 联合视图  (Self)', margin.l + 4, margin.t - 14);
+
+  // --- Draw curves: for each group, draw CRF+CAF for Self data ---
+  for (let gid = 1; gid <= 8; gid++) {
+    if (!_crfOvVisible.has(gid)) continue;
+    const gd = _crfOvData.aggByGroup[gid];
+    if (!gd || !gd.selfCRF || gd.selfCRF.length < 2) continue;
+    const gColor = groupColors[gid - 1];
+
+    // ---- CRF: P(Match) — solid line + circle ----
+    ctx.beginPath();
+    for (let i = 0; i < gd.selfCRF.length; i++) {
+      const x = xToPx(getOvX(gd.selfCRF[i], i));
+      const y = yToPx(gd.selfCRF[i].upperProp);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = gColor; ctx.lineWidth = 2.0; ctx.stroke();
+    // Circle points (filled)
+    for (let i = 0; i < gd.selfCRF.length; i++) {
+      const px = xToPx(getOvX(gd.selfCRF[i], i));
+      const py = yToPx(gd.selfCRF[i].upperProp);
+      ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fillStyle = gColor; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    // ---- CAF: ACC — dashed line + triangle ----
+    if (!gd.selfCRF || gd.selfCRF.length < 2) continue;
+    ctx.beginPath();
+    ctx.setLineDash([8, 4]);
+    for (let i = 0; i < gd.selfCRF.length; i++) {
+      const x = xToPx(getOvX(gd.selfCRF[i], i));
+      const y = yToPx(gd.selfCRF[i].binACC);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = gColor; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.setLineDash([]);
+    // Triangle points
+    for (let i = 0; i < gd.selfCRF.length; i++) {
+      const px = xToPx(getOvX(gd.selfCRF[i], i));
+      const py = yToPx(gd.selfCRF[i].binACC);
+      const s = 4.5;
+      ctx.beginPath();
+      ctx.moveTo(px, py - s);
+      ctx.lineTo(px + s * 0.866, py + s * 0.5);
+      ctx.lineTo(px - s * 0.866, py + s * 0.5);
+      ctx.closePath();
+      ctx.fillStyle = gColor; ctx.globalAlpha = 0.7; ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 0.8; ctx.stroke();
+    }
+  }
+
+  // --- X-axis ticks ---
+  ctx.fillStyle = txtC; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  const xTickCount = 5;
+  for (let i = 0; i <= xTickCount; i++) {
+    const val = xRange[0] + (xRange[1] - xRange[0]) * i / xTickCount;
+    const px = margin.l + pw * i / xTickCount;
+    ctx.fillText(useMs ? val.toFixed(0) : val.toFixed(2), px, margin.t + ph + 14);
+    ctx.beginPath(); ctx.moveTo(px, margin.t + ph); ctx.lineTo(px, margin.t + ph + 4);
+    ctx.strokeStyle = axisC; ctx.stroke();
+  }
+
+  // X-axis label
+  const xTitleOv = useBinIndexOv ? 'Bin Index' : (useMs ? 'RT bin mean (ms)' : (_crfRTLog ? 'ln(RT)' : 'RT bin mean (s)'));
+  ctx.fillStyle = txtC; ctx.font = 'bold 11px sans-serif';
+  ctx.fillText(xTitleOv, margin.l + pw / 2, H - 4);
+
+  // --- Custom legend (hand-drawn on canvas) ---
+  const legY = margin.t + ph + 28;
+  const legX0 = margin.l;
+  ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = txtC;
+
+  // Group color bar
+  const segW = Math.min(36, (pw - 60) / 8);
+  const barX = W / 2 - segW * 4;
+  for (let gid = 1; gid <= 8; gid++) {
+    ctx.fillStyle = _crfOvVisible.has(gid) ? groupColors[gid - 1] : 'rgba(128,128,128,0.3)';
+    ctx.fillRect(barX + segW * (gid - 1), legY, segW - 2, 10);
+    ctx.fillStyle = txtC;
+    ctx.fillText('G' + gid, barX + segW * (gid - 1) + (segW - 2) / 2 - 5, legY + 20);
+  }
+
+  // Legend: CRF vs CAF visual encoding
+  const legRight = Math.max(barX + segW * 8 + 30, margin.l + 10);
+  // CRF marker (circle)
+  ctx.beginPath(); ctx.arc(legRight + 4, legY + 5, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#333'; ctx.fill();
+  ctx.fillStyle = txtC; ctx.fillText('CRF  P(Match)', legRight + 14, legY + 8);
+  // CAF marker (triangle)
+  const triX = legRight + 100;
+  ctx.beginPath();
+  ctx.moveTo(triX + 4, legY + 1);
+  ctx.lineTo(triX + 4 + 4 * 0.866, legY + 5 + 4 * 0.5);
+  ctx.lineTo(triX + 4 - 4 * 0.866, legY + 5 + 4 * 0.5);
+  ctx.closePath();
+  ctx.fillStyle = '#333'; ctx.fill();
+  ctx.fillStyle = txtC; ctx.fillText('CAF  ACC', triX + 16, legY + 8);
+
+  // Metric labels
+  ctx.fillStyle = '#e91e63'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('CRF: ··实线·○圆点 = P(Match)  |  CAF: - -虚线·▲三角 = ACC', W - margin.r, legY - 2);
+
+  ctx.restore();
+
+  // Legend div update
+  const legendDiv = document.getElementById('crfOverviewLegend');
+  if (legendDiv) {
+    legendDiv.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;">' +
+      '<span>●══════  CRF: P(Match Key)  (实线+圆点)</span>' +
+      '<span style="margin-left:16px;">▲ ╌╌╌╌  CAF: ACC  (虚线+三角)</span>' +
+      '<span style="margin-left:12px;color:var(--text-secondary);">| 每组固定颜色 | Self 条件</span></span>';
+  }
+  document.getElementById('crfOverviewInfo').textContent =
+    'CRF+CAF 联合 | Q=' + _crfOvQ + ' | X轴: ' + (useMs ? 'RT(ms)' : 'RT(s)') + ' | Self';
 }
 
 function updateCrfOvTooltip(e) {
