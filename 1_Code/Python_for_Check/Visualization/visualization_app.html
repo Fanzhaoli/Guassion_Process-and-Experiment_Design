@@ -5803,6 +5803,7 @@ let _speDataLoading = null;
 let _speDetailData = null;
 let _speCharts = [];
 let _speCondition = 'all';  // 'all' | 'Matching' | 'NonMatching'
+let _speIdentitySource = 'label';  // 'label' = Label_Standardized_Identity, 'shape' = Shape_Standardized_Identity
 let _lastSPEView = 'overview';
 
 function getSpeD(exp) {
@@ -5823,14 +5824,21 @@ function destroySPECharts() {
 
 function renderSPETab(lp, rp) {
   destroySPECharts();
+  // Reset SPE data when switching identity source
+  _speData = null; _speDataLoading = null;
+  const srcLabel = _speIdentitySource === 'label' ? 'Label_Based' : 'Shape_Based';
   lp.innerHTML = `
     <div class="section-title">SPE 数据库 — P·T·W 与自我加工效应</div>
     <div style="font-size:0.78em;color:var(--text-secondary);margin-bottom:8px;line-height:1.5;">
-      63项实验的元分析级数据浏览。SPE<sub>RT</sub> = Other − Self (Cohen's d)，SPE<sub>ACC</sub> = Self − Other (Cohen's d)。
+      63项实验。SPE<sub>RT</sub> = Other − Self (Cohen's d)，SPE<sub>ACC</sub> = Self − Other (Cohen's d)。
+      <br>Identity列: <b style="color:var(--accent);">${_speIdentitySource === 'label' ? 'Label_Standardized_Identity' : 'Shape_Standardized_Identity'}</b>
     </div>
-    <!-- 条件筛选 -->
+    <!-- Identity Source 和 Matching 条件 -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center;">
-      <span style="font-size:0.72em;color:var(--text-secondary);white-space:nowrap;">Matching:</span>
+      <span style="font-size:0.72em;color:var(--text-secondary);white-space:nowrap;">数据源:</span>
+      <button class="crf-mode-btn ${_speIdentitySource==='label'?'active':''}" id="speSrcLabel" style="font-size:0.72em;padding:2px 8px;">Label_Based</button>
+      <button class="crf-mode-btn ${_speIdentitySource==='shape'?'active':''}" id="speSrcShape" style="font-size:0.72em;padding:2px 8px;">Shape_Based</button>
+      <span style="margin-left:8px;font-size:0.72em;color:var(--text-secondary);white-space:nowrap;">Matching:</span>
       <button class="crf-mode-btn active" id="speCondAll" style="font-size:0.72em;padding:2px 8px;">全部</button>
       <button class="crf-mode-btn" id="speCondMatching" style="font-size:0.72em;padding:2px 8px;">Matching</button>
       <button class="crf-mode-btn" id="speCondNonMatch" style="font-size:0.72em;padding:2px 8px;">NonMatching</button>
@@ -5889,6 +5897,10 @@ function renderSPETab(lp, rp) {
   document.getElementById('speCondMatching').addEventListener('click', () => switchSPECondition('Matching'));
   document.getElementById('speCondNonMatch').addEventListener('click', () => switchSPECondition('NonMatching'));
 
+  // Identity source toggle (Label_Based / Shape_Based)
+  document.getElementById('speSrcLabel').addEventListener('click', () => switchSPEIdentitySource('label'));
+  document.getElementById('speSrcShape').addEventListener('click', () => switchSPEIdentitySource('shape'));
+
   // Bind filter dropdowns
   document.getElementById('speYearFilter').addEventListener('change', () => refreshSPEView());
   document.getElementById('spePFilter').addEventListener('change', () => refreshSPEView());
@@ -5910,6 +5922,17 @@ function switchSPECondition(cond) {
   const a = document.getElementById(activeId); if (a) a.classList.add('active');
   // Refresh current view
   switchSPEView(_lastSPEView || 'overview');
+}
+
+function switchSPEIdentitySource(src) {
+  if (_speIdentitySource === src) return;
+  _speIdentitySource = src;
+  _speData = null;
+  _speDataLoading = null;
+  // Re-render entire SPE tab to update the header display and reload data
+  const lp = document.getElementById('leftPanel');
+  const rp = document.getElementById('vizArea');
+  renderSPETab(lp, rp);
 }
 
 function setSPEActiveBtn(id) {
@@ -5958,7 +5981,7 @@ async function populateSPEFilters() {
   fillSelect('speWFilter', wVals);
 
   // Load identity chips
-  const identitySummaryResp = await fetchAPI('/api/spe/identity-summary');
+  const identitySummaryResp = await fetchAPI('/api/spe/identity-summary?source=' + _speIdentitySource);
   const idChips = document.getElementById('speIdentityChips');
   if (!idChips || !identitySummaryResp || identitySummaryResp.error) return;
   const identities = identitySummaryResp.identity_summary || [];
@@ -6002,7 +6025,7 @@ function getSPEFilteredExps(data) {
   if (fs.W !== 'all') exps = exps.filter(e => e.W_ms !== null && Math.abs(e.W_ms - parseFloat(fs.W)) < 0.01);
 
   // Identity filter: experiment must contain ALL selected identity types
-  if (fs.selectedIdentities.size > 0) {
+  if (fs.selectedIdentities && fs.selectedIdentities.size > 0) {
     exps = exps.filter(e => {
       const eIdentities = e.identity_types || [];
       for (const si of fs.selectedIdentities) {
@@ -6021,6 +6044,7 @@ function getSPEFilterValues() {
     P: document.getElementById('spePFilter')?.value || 'all',
     T: document.getElementById('speTFilter')?.value || 'all',
     W: document.getElementById('speWFilter')?.value || 'all',
+    selectedIdentities: _speFilterState?.selectedIdentities || new Set(),
   };
 }
 
@@ -6058,7 +6082,7 @@ async function ensureSPEData() {
   if (_speDataLoading) return _speDataLoading;
   const rp = document.getElementById('speRightCharts');
   if (rp) rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:var(--accent);">⏳ 加载SPE数据库 (计算Cohen\'s d中...)</div>';
-  _speDataLoading = fetchAPI('/api/spe/overview').then(result => {
+  _speDataLoading = fetchAPI('/api/spe/overview?source=' + _speIdentitySource).then(result => {
     _speData = result;
     _speDataLoading = null;
     return result;
@@ -6080,9 +6104,10 @@ async function renderSPEOverview() {
   const nValid = exps.length;
   const nTotal = allExps.length;
   const condLabel = _speCondition === 'Matching' ? ' (Matching)' : (_speCondition === 'NonMatching' ? ' (NonMatching)' : '');
+  const srcLabel = _speIdentitySource === 'label' ? 'Label' : 'Shape';
   const rp = document.getElementById('speRightCharts');
   rp.innerHTML = `
-    <div style="font-weight:600;color:var(--accent);">群体总览${condLabel} (${nValid}/${nTotal} 实验有有效SPE)</div>
+    <div style="font-weight:600;color:var(--accent);">群体总览${condLabel} — ${srcLabel}_Based (${nValid}/${nTotal} 实验有有效SPE)</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <div style="flex:1;min-width:320px;height:300px;"><canvas id="speHistRT"></canvas></div>
       <div style="flex:1;min-width:320px;height:300px;"><canvas id="speHistACC"></canvas></div>
@@ -6438,7 +6463,7 @@ async function loadSPEDetail(pairKey) {
   const rp = document.getElementById('speRightCharts');
   rp.innerHTML = '<div style="text-align:center;padding-top:40px;color:var(--accent);">⏳ 加载实验详情...</div>';
   try {
-    _speDetailData = await fetchAPI('/api/spe/detail?key=' + encodeURIComponent(pairKey) + '&condition=' + _speCondition);
+    _speDetailData = await fetchAPI('/api/spe/detail?key=' + encodeURIComponent(pairKey) + '&condition=' + _speCondition + '&source=' + _speIdentitySource);
   } catch(e) {
     rp.innerHTML = '<div style="color:#f44336;">加载失败: '+e.message+'</div>';
     return;
@@ -6469,6 +6494,7 @@ async function loadSPEDetail(pairKey) {
     <div style="font-weight:600;color:var(--accent);">${pairKey}</div>
     <div style="font-size:0.72em;line-height:1.6;color:var(--text-secondary);">
       <div>被试数: ${d.n_subjects} | 试次: ${d.n_total_trials}</div>
+      <div>Identity列: <b style="color:var(--accent);">${d.identity_col_used || 'N/A'}</b> (${d.identity_source === 'label' ? 'Label_Based' : 'Shape_Based'})</div>
       <div>Identity类型: ${identTypes.map(i => `<span style="color:${i==='Self'?'#ff9800':(i==='Stranger'?'#2196f3':'#4caf50')};">${i}</span>`).join(', ')}</div>
       <div style="margin-top:2px;">${compHTML}</div>
       <div style="margin-top:4px;">Self RT均值: ${d.overall_self_mean_rt}ms | ${primaryComp} RT均值: ${d.overall_stranger_mean_rt}ms</div>
@@ -6745,7 +6771,7 @@ async function loadCrfExperiment(pairKey) {
   document.getElementById('crfExpLabel').textContent = ' — 加载中...';
   const rp = document.getElementById('speRightCharts');
   try {
-    const resp = await fetchAPI('/api/spe/trials?key=' + encodeURIComponent(pairKey));
+    const resp = await fetchAPI('/api/spe/trials?key=' + encodeURIComponent(pairKey) + '&source=' + _speIdentitySource);
     if (resp.error) { document.getElementById('crfExpLabel').textContent = ' — 错误: '+resp.error; return; }
     _crfTrials = resp.trials || [];
     document.getElementById('crfExpLabel').textContent = ' — ' + pairKey + ' (N=' + _crfTrials.length + ' trials)';

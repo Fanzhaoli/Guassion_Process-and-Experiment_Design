@@ -519,7 +519,33 @@ def _compute_subject_spe(rows, identity_col, rt_col, acc_col, condition_filter="
     }
 
 
-def load_spe_overview(condition_filter="all"):
+def _select_identity_column(headers, prefer="label"):
+    """Select the Standardized identity column based on user preference.
+
+    Args:
+        headers: list of column name strings (or dict keys)
+        prefer: 'label' -> Label_Standardized_Identity, 'shape' -> Shape_Standardized_Identity
+
+    Returns:
+        str: best available identity column name, or None
+    """
+    if prefer == 'label':
+        # Prefer Label_Standardized_Identity, fallback to Shape_Standardized_Identity
+        if "Label_Standardized_Identity" in headers:
+            return "Label_Standardized_Identity"
+        if "Shape_Standardized_Identity" in headers:
+            return "Shape_Standardized_Identity"
+        return None
+    else:
+        # Prefer Shape_Standardized_Identity, fallback to Label_Standardized_Identity
+        if "Shape_Standardized_Identity" in headers:
+            return "Shape_Standardized_Identity"
+        if "Label_Standardized_Identity" in headers:
+            return "Label_Standardized_Identity"
+        return None
+
+
+def load_spe_overview(condition_filter="all", identity_source="label"):
     """Load all SPE experiment metadata and compute group-level SPE effect sizes."""
     # Normalize condition_filter
     if not condition_filter or condition_filter not in ("all", "Matching", "NonMatching"):
@@ -587,18 +613,13 @@ def load_spe_overview(condition_filter="all"):
                 for r in reader:
                     rows.append(r)
 
-            # Detect column names
-            identity_col = None
+            # Detect column names — ONLY use Standardized columns
+            headers = list(rows[0].keys()) if rows else []
+            identity_col = _select_identity_column(headers, identity_source)
             rt_col = None
             acc_col = None
 
-            for col in rows[0].keys() if rows else []:
-                if col == "Label_Standardized_Identity":
-                    identity_col = col
-                    break
-                if identity_col is None and col in ("Label_Origin_Identity", "Shape_Standardized_Identity"):
-                    identity_col = col
-            for col in rows[0].keys() if rows else []:
+            for col in headers:
                 if col in ("RT_ms", "RT_sec"):
                     if rt_col is None or col == "RT_ms":
                         rt_col = col
@@ -609,6 +630,7 @@ def load_spe_overview(condition_filter="all"):
                 exp["spe_rt_d"] = None
                 exp["spe_acc_d"] = None
                 exp["n_subjects"] = 0
+                exp["_no_identity_col"] = True
                 continue
 
             # Compute SPE for all conditions + matching + nonmatching
@@ -656,10 +678,10 @@ def load_spe_overview(condition_filter="all"):
             exp["n_subjects"] = 0
             exp["_error"] = str(e)
 
-    return {"experiments": experiments, "count": len(experiments)}
+    return {"experiments": experiments, "count": len(experiments), "identity_source": identity_source}
 
 
-def load_spe_experiment_detail(pair_key, condition_filter="all"):
+def load_spe_experiment_detail(pair_key, condition_filter="all", identity_source="label"):
     """Load full detail for one SPE experiment including per-subject SPE."""
     if not pair_key:
         return {"error": "Missing pairKey parameter"}
@@ -698,19 +720,14 @@ def load_spe_experiment_detail(pair_key, condition_filter="all"):
                 rows.append(r)
 
         from collections import defaultdict
-        subj_data = defaultdict(lambda: {"Self": [], "Stranger": []})
-        subj_acc = defaultdict(lambda: {"Self": [], "Stranger": []})
-        identity_col = None
+
+        # ONLY use Standardized columns
+        headers = list(rows[0].keys()) if rows else []
+        identity_col = _select_identity_column(headers, identity_source)
         rt_col = None
         acc_col = None
 
-        for col in rows[0].keys() if rows else []:
-            if col == "Label_Standardized_Identity":
-                identity_col = col
-                break
-            if identity_col is None and col in ("Label_Origin_Identity", "Shape_Standardized_Identity"):
-                identity_col = col
-        for col in rows[0].keys() if rows else []:
+        for col in headers:
             if col in ("RT_ms", "RT_sec"):
                 if rt_col is None or col == "RT_ms":
                     rt_col = col
@@ -804,6 +821,8 @@ def load_spe_experiment_detail(pair_key, condition_filter="all"):
             "meta": exp_meta,
             "n_subjects": len(subjects),
             "n_total_trials": len(rows),
+            "identity_source": identity_source,
+            "identity_col_used": identity_col,
             "identity_types": result["identity_types"],
             "identity_comparisons": result["comparisons"],
             "primary_comparison": result["primary_comparison"],
@@ -819,7 +838,7 @@ def load_spe_experiment_detail(pair_key, condition_filter="all"):
         return {"error": str(e)}
 
 
-def load_spe_trials(pair_key):
+def load_spe_trials(pair_key, identity_source="label"):
     """Return raw trial rows for CRF analysis from SPE CSV."""
     if not pair_key:
         return {"error": "Missing pairKey parameter"}
@@ -848,18 +867,13 @@ def load_spe_trials(pair_key):
                 rows.append(r)
 
         if not rows:
-            return {"trials": [], "n_total": 0}
+            return {"trials": [], "n_total": 0, "identity_source": identity_source}
 
-        # Detect column names
-        identity_col = None
+        # ONLY use Standardized columns
+        headers = list(rows[0].keys())
+        identity_col = _select_identity_column(headers, identity_source)
         rt_col = None
-        for col in rows[0].keys():
-            if col == "Label_Standardized_Identity":
-                identity_col = col
-                break
-            if identity_col is None and col in ("Label_Origin_Identity", "Shape_Standardized_Identity"):
-                identity_col = col
-        for col in rows[0].keys():
+        for col in headers:
             if col in ("RT_ms", "RT_sec"):
                 if rt_col is None or col == "RT_ms":
                     rt_col = col
@@ -894,18 +908,18 @@ def load_spe_trials(pair_key):
 
             trials.append(trial)
 
-        return {"trials": trials, "n_total": len(trials)}
+        return {"trials": trials, "n_total": len(trials), "identity_source": identity_source, "identity_col_used": identity_col}
 
     except Exception as e:
         return {"error": str(e)}
 
 
-def load_identity_summary():
+def load_identity_summary(identity_source="label"):
     """Aggregate identity type statistics across all SPE experiments.
     Returns: list of unique identity types with experiment counts and descriptive stats.
     """
     from collections import defaultdict
-    overview = load_spe_overview()
+    overview = load_spe_overview(identity_source=identity_source)
     identity_map = defaultdict(lambda: {"count": 0, "experiments": [], "total_subjects": 0})
 
     for exp in overview.get("experiments", []):
@@ -969,16 +983,20 @@ class AppHandler(http.server.BaseHTTPRequestHandler):
                 self._json({"status": "ok", "message": "Server is running"})
             elif path == '/api/spe/overview':
                 cond = params.get('condition', ['all'])[0]
-                self._json(load_spe_overview(condition_filter=cond))
+                src = params.get('source', ['label'])[0]
+                self._json(load_spe_overview(condition_filter=cond, identity_source=src))
             elif path == '/api/spe/detail':
                 pk = params.get('key', [None])[0]
                 cond = params.get('condition', ['all'])[0]
-                self._json(load_spe_experiment_detail(unquote(pk) if pk else None, condition_filter=cond))
+                src = params.get('source', ['label'])[0]
+                self._json(load_spe_experiment_detail(unquote(pk) if pk else None, condition_filter=cond, identity_source=src))
             elif path == '/api/spe/trials':
                 pk = params.get('key', [None])[0]
-                self._json(load_spe_trials(unquote(pk) if pk else None))
+                src = params.get('source', ['label'])[0]
+                self._json(load_spe_trials(unquote(pk) if pk else None, identity_source=src))
             elif path == '/api/spe/identity-summary':
-                self._json(load_identity_summary())
+                src = params.get('source', ['label'])[0]
+                self._json(load_identity_summary(identity_source=src))
             elif path == '/' or path == '' or path == '/index.html':
                 self._serve_html()
             else:
